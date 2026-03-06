@@ -1,0 +1,391 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
+
+@layer base {
+  :root {
+    /* ── Base ── */
+    --background: 214 100% 97%;
+    --foreground: 222 47% 11%;
+
+    /* ── Card / Glass ── */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    /* ── Popover ── */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* ── Primary — Cornflower Blue #6495ED ── */
+    --primary: 219 79% 66%;
+    --primary-foreground: 0 0% 100%;
+
+    /* ── Secondary — Mint Green #64ED95 ── */
+    --secondary: 144 79% 66%;
+    --secondary-foreground: 144 50% 15%;
+
+    /* ── Muted ── */
+    --muted: 214 32% 91%;
+    --muted-foreground: 215 16% 47%;
+
+    /* ── Accent ── */
+    --accent: 219 79% 93%;
+    --accent-foreground: 219 79% 30%;
+
+    /* ── Destructive ── */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* ── Border / Input / Ring ── */
+    --border: 214 32% 88%;
+    --input: 214 32% 88%;
+    --ring: 219 79% 66%;
+
+    /* ── Border Radius ── */
+    --radius: 0.625rem;
+
+    /* ── Glass (Light) ── */
+    --glass-bg: rgba(255, 255, 255, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.8);
+    --glass-shadow: 0 8px 32px rgba(100, 149, 237, 0.12);
+    --glass-blur: blur(16px);
+
+    /* ── Gradient Background (Light) ── */
+    --gradient-bg: linear-gradient(
+      135deg,
+      #e8f0fe 0%,
+      #f0fdf4 50%,
+      #ede9fe 100%
+    );
+  }
+
+  .dark {
+    /* ── Base ── */
+    --background: 222 47% 7%;
+    --foreground: 213 31% 91%;
+
+    /* ── Card / Glass ── */
+    --card: 222 47% 10%;
+    --card-foreground: 213 31% 91%;
+
+    /* ── Popover ── */
+    --popover: 222 47% 10%;
+    --popover-foreground: 213 31% 91%;
+
+    /* ── Primary — lighter for dark #7EABF5 ── */
+    --primary: 219 85% 73%;
+    --primary-foreground: 222 47% 7%;
+
+    /* ── Secondary — lighter for dark #7EFAAA ── */
+    --secondary: 144 92% 74%;
+    --secondary-foreground: 144 50% 10%;
+
+    /* ── Muted ── */
+    --muted: 223 47% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    /* ── Accent ── */
+    --accent: 219 79% 20%;
+    --accent-foreground: 219 79% 85%;
+
+    /* ── Destructive ── */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* ── Border / Input / Ring ── */
+    --border: 223 47% 18%;
+    --input: 223 47% 18%;
+    --ring: 219 85% 73%;
+
+    /* ── Glass (Dark) ── */
+    --glass-bg: rgba(15, 23, 42, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    --glass-blur: blur(20px);
+
+    /* ── Gradient Background (Dark) ── */
+    --gradient-bg: linear-gradient(
+      135deg,
+      #0f172a 0%,
+      #0f1f2e 50%,
+      #130f2e 100%
+    );
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background: var(--gradient-bg);
+    background-attachment: fixed;
+    color: hsl(var(--foreground));
+    font-family: "Poppins", sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Poppins", sans-serif;
+    font-weight: 600;
+  }
+}
+
+/* ============================================================
+   GLASSMORPHISM UTILITIES
+   ============================================================ */
+
+@layer utilities {
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: var(--radius);
+    transition:
+      box-shadow 0.3s ease,
+      transform 0.3s ease;
+  }
+
+  .glass-card:hover {
+    box-shadow: 0 12px 40px rgba(100, 149, 237, 0.2);
+    transform: translateY(-2px);
+  }
+
+  .dark .glass-card:hover {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .glass-sidebar {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-right: 1px solid var(--glass-border);
+    box-shadow: 4px 0 24px rgba(100, 149, 237, 0.08);
+  }
+
+  .glass-navbar {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 4px 24px rgba(100, 149, 237, 0.08);
+  }
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(100, 149, 237, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(100, 149, 237, 0);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.4s ease forwards;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.4s ease forwards;
+  }
+
+  .animate-fade-in-down {
+    animation: fade-in-down 0.4s ease forwards;
+  }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.4s ease forwards;
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.4s ease forwards;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.3s ease forwards;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  /* Staggered animation delays untuk list items */
+  .stagger-1 {
+    animation-delay: 0.05s;
+  }
+  .stagger-2 {
+    animation-delay: 0.1s;
+  }
+  .stagger-3 {
+    animation-delay: 0.15s;
+  }
+  .stagger-4 {
+    animation-delay: 0.2s;
+  }
+  .stagger-5 {
+    animation-delay: 0.25s;
+  }
+}
+
+/* ============================================================
+   SKELETON LOADING
+   ============================================================ */
+
+@layer utilities {
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--accent)) 50%,
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius);
+  }
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* ============================================================
+   PAGE TRANSITION
+   ============================================================ */
+
+.page-enter {
+  animation: fade-in-up 0.35s ease forwards;
+}
+
+.page-exit {
+  animation: fade-in 0.2s ease reverse forwards;
+}
