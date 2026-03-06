@@ -28,12 +28,13 @@ import HistoryPage from "../pages/teacher/HistoryPage";
 
 // ── Misc Pages ──
 import NotFoundPage from "../pages/NotFoundPage";
-import ForbiddenPage from "../pages/ForbiddenPage";
+import ShowcasePage from "../pages/ShowcasePage";
 
 const router = createBrowserRouter([
   // ── Public ──
   { path: "/login", element: <LoginPage /> },
-  { path: "/forbidden", element: <ForbiddenPage /> },
+  { path: "/NotFoundPage", element: <NotFoundPage /> },
+  { path: "/showcase", element: <ShowcasePage /> },
 
   // ── Protected ──
   {
