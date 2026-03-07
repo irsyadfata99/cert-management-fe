@@ -7,11 +7,7 @@ function getPageRange(current, total) {
   const delta = PAGE_SIBLINGS;
   const range = [];
 
-  for (
-    let i = Math.max(2, current - delta);
-    i <= Math.min(total - 1, current + delta);
-    i++
-  ) {
+  for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
     range.push(i);
   }
 
@@ -30,10 +26,8 @@ function PageButton({ page, current, onClick }) {
     <button
       onClick={() => onClick(page)}
       className={cn(
-        "w-8 h-8 rounded-lg text-sm font-medium transition-all duration-200",
-        isActive
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        "w-8 h-8 rounded-lg text-sm font-medium transition-all duration-200 border",
+        isActive ? "bg-primary text-primary-foreground border-primary shadow-sm" : "text-foreground border-border bg-background hover:bg-accent hover:text-accent-foreground",
       )}
     >
       {page}
@@ -49,12 +43,7 @@ function PageButton({ page, current, onClick }) {
  * @param {function} onPageChange
  * @param {string} className
  */
-export default function Pagination({
-  page,
-  totalPages,
-  onPageChange,
-  className,
-}) {
+export default function Pagination({ page, totalPages, onPageChange, className }) {
   if (totalPages <= 1) return null;
 
   const pages = getPageRange(page, totalPages);
@@ -66,10 +55,8 @@ export default function Pagination({
         onClick={() => onPageChange(page - 1)}
         disabled={page === 1}
         className={cn(
-          "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
-          page === 1
-            ? "text-muted-foreground/40 cursor-not-allowed"
-            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 border",
+          page === 1 ? "text-muted-foreground/40 border-border/40 cursor-not-allowed" : "text-foreground border-border bg-background hover:bg-accent hover:text-accent-foreground",
         )}
       >
         <ChevronLeft className="w-4 h-4" />
@@ -78,10 +65,7 @@ export default function Pagination({
       {/* Pages */}
       {pages.map((p, i) =>
         p === "..." ? (
-          <span
-            key={`dots-${i}`}
-            className="w-8 h-8 flex items-center justify-center text-muted-foreground"
-          >
+          <span key={`dots-${i}`} className="w-8 h-8 flex items-center justify-center text-muted-foreground">
             <MoreHorizontal className="w-4 h-4" />
           </span>
         ) : (
@@ -94,10 +78,8 @@ export default function Pagination({
         onClick={() => onPageChange(page + 1)}
         disabled={page === totalPages}
         className={cn(
-          "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
-          page === totalPages
-            ? "text-muted-foreground/40 cursor-not-allowed"
-            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 border",
+          page === totalPages ? "text-muted-foreground/40 border-border/40 cursor-not-allowed" : "text-foreground border-border bg-background hover:bg-accent hover:text-accent-foreground",
         )}
       >
         <ChevronRight className="w-4 h-4" />
