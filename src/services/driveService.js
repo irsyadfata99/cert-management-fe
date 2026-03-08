@@ -4,6 +4,9 @@ const driveService = {
   // ── Stock (admin & super_admin) ──
   getStock: () => api.get("/drive/stock").then((r) => r.data),
 
+  // [NEW] Get all centers stock — accessible by admin & super_admin
+  getAdminStock: () => api.get("/admin/stock").then((r) => r.data),
+
   addStock: (data) => api.post("/drive/stock/add", data).then((r) => r.data),
 
   transferStock: (data) =>

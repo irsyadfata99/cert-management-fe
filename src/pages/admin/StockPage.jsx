@@ -26,18 +26,13 @@ import {
 import PageHeader from "@/components/common/PageHeader";
 import StatusBadge from "@/components/common/StatusBadge";
 import driveService from "@/services/driveService";
-import api from "@/services/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// ── Inline service for centers list ──────────────────────────
-const getCenters = (params) =>
-  api.get("/admin/centers", { params }).then((r) => r.data);
-
 // ── Stock Card ────────────────────────────────────────────────
 function StockCard({ center, onAction }) {
-  const certLow = center.cert_quantity <= center.cert_threshold;
-  const medalLow = center.medal_quantity <= center.medal_threshold;
+  const certLow = center.cert_stock <= center.cert_threshold;
+  const medalLow = center.medal_stock <= center.medal_threshold;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -68,7 +63,7 @@ function StockCard({ center, onAction }) {
                 certLow && "text-destructive",
               )}
             >
-              {center.cert_quantity}
+              {center.cert_stock}
             </p>
             <p className="text-xs text-muted-foreground">
               threshold: {center.cert_threshold}
@@ -106,7 +101,7 @@ function StockCard({ center, onAction }) {
                 medalLow && "text-destructive",
               )}
             >
-              {center.medal_quantity}
+              {center.medal_stock}
             </p>
             <p className="text-xs text-muted-foreground">
               threshold: {center.medal_threshold}
@@ -214,8 +209,8 @@ function AddStockDialog({ open, onOpenChange, center, stockType, onSuccess }) {
               Current stock:{" "}
               <span className="font-medium">
                 {stockType === "certificate"
-                  ? center.cert_quantity
-                  : center.medal_quantity}
+                  ? center.cert_stock
+                  : center.medal_stock}
               </span>
             </p>
           )}
@@ -271,8 +266,8 @@ function TransferStockDialog({
     }
     const currentQty =
       stockType === "certificate"
-        ? fromCenter.cert_quantity
-        : fromCenter.medal_quantity;
+        ? fromCenter.cert_stock
+        : fromCenter.medal_stock;
     if (qty > currentQty) {
       toast.error(`Insufficient stock. Current: ${currentQty}`);
       return;
@@ -317,8 +312,8 @@ function TransferStockDialog({
               <span className="font-medium text-foreground">
                 (
                 {stockType === "certificate"
-                  ? fromCenter?.cert_quantity
-                  : fromCenter?.medal_quantity}{" "}
+                  ? fromCenter?.cert_stock
+                  : fromCenter?.medal_stock}{" "}
                 available)
               </span>
             </p>
@@ -495,8 +490,9 @@ export default function StockPage() {
   const fetchStock = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await driveService.getStock();
-      // Backend returns array of all centers' stock
+      // [FIX] Pakai GET /admin/stock — accessible oleh admin & super_admin,
+      // return semua center tanpa filter has_alert, field: cert_stock & medal_stock
+      const res = await driveService.getAdminStock();
       setStockData(Array.isArray(res.data) ? res.data : [res.data]);
     } catch (err) {
       toast.error(err.response?.data?.message ?? "Failed to load stock data");
@@ -519,15 +515,11 @@ export default function StockPage() {
     }
   };
 
-  const totalCerts = stockData.reduce((s, c) => s + (c.cert_quantity ?? 0), 0);
-  const totalMedals = stockData.reduce(
-    (s, c) => s + (c.medal_quantity ?? 0),
-    0,
-  );
+  const totalCerts = stockData.reduce((s, c) => s + (c.cert_stock ?? 0), 0);
+  const totalMedals = stockData.reduce((s, c) => s + (c.medal_stock ?? 0), 0);
   const lowStockCount = stockData.filter(
     (c) =>
-      c.cert_quantity <= c.cert_threshold ||
-      c.medal_quantity <= c.medal_threshold,
+      c.cert_stock <= c.cert_threshold || c.medal_stock <= c.medal_threshold,
   ).length;
 
   return (
