@@ -108,7 +108,7 @@ function StudentFormDialog({
               Center <span className="text-destructive">*</span>
             </Label>
             <Select value={centerId} onValueChange={setCenterId}>
-              <SelectTrigger id="student-center">
+              <SelectTrigger id="student-center" className="w-full">
                 <SelectValue placeholder="Select a center..." />
               </SelectTrigger>
               <SelectContent position="popper">
@@ -161,10 +161,10 @@ export default function StudentsPage() {
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [deactivating, setDeactivating] = useState(false);
 
-  // fetch centers once for dropdowns
+  // [CHANGED] Gunakan getAllForAdmin agar admin tidak kena 403
   useEffect(() => {
     centerService
-      .getAll({ limit: 100 })
+      .getAllForAdmin({ limit: 100 })
       .then((res) => setCenters(res.data ?? []))
       .catch(() => toast.error("Failed to load centers"));
   }, []);
@@ -193,6 +193,7 @@ export default function StudentsPage() {
   useEffect(() => {
     fetchStudents();
   }, [fetchStudents]);
+
   useEffect(() => {
     reset();
   }, [debouncedSearch, statusFilter, centerFilter, reset]);

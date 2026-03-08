@@ -4,8 +4,7 @@ import {
   TrendingUp,
   Upload,
   RefreshCw,
-  Award,
-  FileText,
+  Download,
 } from "lucide-react";
 import {
   AreaChart,
@@ -41,6 +40,68 @@ import centerService from "@/services/centerService";
 import { formatMonth } from "@/utils/formatDate";
 import { toast } from "sonner";
 import usePagination from "@/hooks/usePagination";
+
+// ── CSV Export Utility ────────────────────────────────────────
+function exportToCsv(filename, rows, columns) {
+  const header = columns.map((c) => c.label).join(",");
+  const body = rows
+    .map((row) =>
+      columns
+        .map((c) => {
+          const val = c.value(row) ?? "";
+          const str = String(val).replace(/"/g, '""');
+          return str.includes(",") || str.includes('"') || str.includes("\n")
+            ? `"${str}"`
+            : str;
+        })
+        .join(","),
+    )
+    .join("\n");
+  const blob = new Blob([`${header}\n${body}`], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── CSV column definitions ────────────────────────────────────
+const UPLOAD_CSV_COLS = [
+  { label: "Teacher", value: (r) => r.teacher_name },
+  { label: "Email", value: (r) => r.teacher_email },
+  { label: "Center", value: (r) => r.center_name },
+  { label: "Student", value: (r) => r.student_name },
+  { label: "Module", value: (r) => r.module_name },
+  { label: "Status", value: (r) => r.upload_status },
+  { label: "Scan Uploaded At", value: (r) => r.scan_uploaded_at ?? "" },
+  { label: "Report Uploaded At", value: (r) => r.report_uploaded_at ?? "" },
+];
+
+const STOCK_CSV_COLS = [
+  { label: "Center", value: (r) => r.center_name },
+  { label: "Cert Quantity", value: (r) => r.cert_quantity },
+  { label: "Cert Threshold", value: (r) => r.cert_threshold },
+  { label: "Cert Low Stock", value: (r) => (r.cert_low_stock ? "Yes" : "No") },
+  { label: "Medal Quantity", value: (r) => r.medal_quantity },
+  { label: "Medal Threshold", value: (r) => r.medal_threshold },
+  {
+    label: "Medal Low Stock",
+    value: (r) => (r.medal_low_stock ? "Yes" : "No"),
+  },
+];
+
+const ACTIVITY_CSV_COLS = [
+  { label: "Center", value: (r) => r.center_name },
+  { label: "Month", value: (r) => r.month },
+  { label: "Cert Printed", value: (r) => r.cert_printed ?? 0 },
+  { label: "Cert Reprinted", value: (r) => r.cert_reprinted ?? 0 },
+  { label: "Cert Scan Uploaded", value: (r) => r.cert_scan_uploaded ?? 0 },
+  { label: "Medal Printed", value: (r) => r.medal_printed ?? 0 },
+  { label: "Total Issued", value: (r) => r.total_issued ?? 0 },
+];
 
 // ── Custom Tooltip ──────────────────────────────────────────
 function CustomTooltip({ active, payload, label }) {
@@ -182,17 +243,14 @@ const stockColumns = [
 export default function SuperAdminMonitoringPage() {
   const [centers, setCenters] = useState([]);
 
-  // Filters
   const [selectedCenter, setSelectedCenter] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
 
-  // Data
   const [uploadData, setUploadData] = useState([]);
   const [uploadTotal, setUploadTotal] = useState(0);
   const [activityData, setActivityData] = useState([]);
   const [stockAlerts, setStockAlerts] = useState([]);
 
-  // Loading states
   const [uploadLoading, setUploadLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(true);
   const [stockLoading, setStockLoading] = useState(true);
@@ -200,7 +258,6 @@ export default function SuperAdminMonitoringPage() {
 
   const { page, limit, goToPage, reset } = usePagination(10);
 
-  // Load centers for filter
   useEffect(() => {
     centerService
       .getAll({ limit: 100, is_active: true })
@@ -208,7 +265,6 @@ export default function SuperAdminMonitoringPage() {
       .catch(() => {});
   }, []);
 
-  // Reset page on filter change
   useEffect(() => {
     reset();
   }, [selectedCenter, selectedStatus, reset]);
@@ -274,7 +330,6 @@ export default function SuperAdminMonitoringPage() {
     toast.success("Data refreshed");
   };
 
-  // Chart data — group by month, sum across centers
   const chartData = useMemo(() => {
     const grouped = {};
     for (const row of activityData) {
@@ -331,7 +386,6 @@ export default function SuperAdminMonitoringPage() {
             ))}
           </SelectContent>
         </Select>
-
         <Select value={selectedStatus} onValueChange={setSelectedStatus}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="All Statuses" />
@@ -345,7 +399,6 @@ export default function SuperAdminMonitoringPage() {
             <SelectItem value="complete">Complete</SelectItem>
           </SelectContent>
         </Select>
-
         {uploadTotal > 0 && (
           <span className="text-xs text-muted-foreground">
             {uploadTotal} enrollment{uploadTotal !== 1 ? "s" : ""}
@@ -367,7 +420,20 @@ export default function SuperAdminMonitoringPage() {
                   : "All centers combined"}
               </CardDescription>
             </div>
-            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={activityData.length === 0}
+                onClick={() =>
+                  exportToCsv("activity.csv", activityData, ACTIVITY_CSV_COLS)
+                }
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export CSV
+              </Button>
+              <TrendingUp className="w-4 h-4 text-muted-foreground" />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -476,7 +542,20 @@ export default function SuperAdminMonitoringPage() {
                 Certificate scan & report upload per enrollment
               </CardDescription>
             </div>
-            <Upload className="w-4 h-4 text-muted-foreground" />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={uploadData.length === 0}
+                onClick={() =>
+                  exportToCsv("upload-status.csv", uploadData, UPLOAD_CSV_COLS)
+                }
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export CSV
+              </Button>
+              <Upload className="w-4 h-4 text-muted-foreground" />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -511,7 +590,20 @@ export default function SuperAdminMonitoringPage() {
                 Centers with stock below threshold
               </CardDescription>
             </div>
-            <AlertTriangle className="w-4 h-4 text-destructive" />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={stockAlerts.length === 0}
+                onClick={() =>
+                  exportToCsv("stock-alerts.csv", stockAlerts, STOCK_CSV_COLS)
+                }
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export CSV
+              </Button>
+              <AlertTriangle className="w-4 h-4 text-destructive" />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">

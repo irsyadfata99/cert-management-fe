@@ -11,6 +11,7 @@ import {
   Printer,
   History,
   Award,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useAuth from "@/hooks/useAuth";
@@ -25,6 +26,7 @@ const MENUS = {
   ],
   admin: [
     { label: "Dashboard", icon: LayoutDashboard, to: "/admin/dashboard" },
+    { label: "Stock", icon: Package, to: "/admin/stock" },
     { label: "Students", icon: GraduationCap, to: "/admin/students" },
     { label: "Teachers", icon: Users, to: "/admin/teachers" },
     { label: "Modules", icon: BookOpen, to: "/admin/modules" },

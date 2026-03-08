@@ -20,6 +20,7 @@ import TeachersPage from "../pages/admin/TeachersPage";
 import ModulesPage from "../pages/admin/ModulesPage";
 import EnrollmentsPage from "../pages/admin/EnrollmentsPage";
 import AdminMonitoringPage from "../pages/admin/MonitoringPage";
+import StockPage from "../pages/admin/StockPage";
 
 // ── Teacher Pages ──
 import TeacherDashboard from "../pages/teacher/DashboardPage";
@@ -69,6 +70,7 @@ const router = createBrowserRouter([
             element: <AppLayout />,
             children: [
               { path: "/admin/dashboard", element: <AdminDashboard /> },
+              { path: "/admin/stock", element: <StockPage /> },
               { path: "/admin/students", element: <StudentsPage /> },
               { path: "/admin/teachers", element: <TeachersPage /> },
               { path: "/admin/modules", element: <ModulesPage /> },
