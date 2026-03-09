@@ -1,9 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Power } from "lucide-react";
+import { Plus, Pencil, Power, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 import PageHeader from "@/components/common/PageHeader";
 import StatusBadge from "@/components/common/StatusBadge";
 import DataTable from "@/components/common/DataTable";
@@ -39,10 +45,16 @@ function CenterFormDialog({ open, onOpenChange, center, onSuccess }) {
     setLoading(true);
     try {
       if (isEdit) {
-        await centerService.update(center.id, { name: name.trim(), address: address.trim() || null });
+        await centerService.update(center.id, {
+          name: name.trim(),
+          address: address.trim() || null,
+        });
         toast.success("Center updated");
       } else {
-        await centerService.create({ name: name.trim(), address: address.trim() || null });
+        await centerService.create({
+          name: name.trim(),
+          address: address.trim() || null,
+        });
         toast.success("Center created");
       }
       onSuccess();
@@ -65,13 +77,26 @@ function CenterFormDialog({ open, onOpenChange, center, onSuccess }) {
             <Label htmlFor="center-name">
               Name <span className="text-destructive">*</span>
             </Label>
-            <Input id="center-name" placeholder="e.g. Jakarta Selatan" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSubmit()} />
+            <Input
+              id="center-name"
+              placeholder="e.g. Jakarta Selatan"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="center-address">
-              Address <span className="text-muted-foreground text-xs">(optional)</span>
+              Address{" "}
+              <span className="text-muted-foreground text-xs">(optional)</span>
             </Label>
-            <Input id="center-address" placeholder="e.g. Jl. Sudirman No. 1" value={address} onChange={(e) => setAddress(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSubmit()} />
+            <Input
+              id="center-address"
+              placeholder="e.g. Jl. Sudirman No. 1"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            />
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
@@ -106,6 +131,8 @@ export default function CentersPage() {
   const [editTarget, setEditTarget] = useState(null);
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [deactivating, setDeactivating] = useState(false);
+  const [setupDriveTarget, setSetupDriveTarget] = useState(null);
+  const [settingUpDrive, setSettingUpDrive] = useState(false);
 
   const fetchCenters = useCallback(async () => {
     setLoading(true);
@@ -149,17 +176,47 @@ export default function CentersPage() {
     }
   };
 
+  const handleSetupDrive = async () => {
+    setSettingUpDrive(true);
+    try {
+      await centerService.setupDrive(setupDriveTarget.id);
+      toast.success(`Drive folder created for "${setupDriveTarget.name}"`);
+      setSetupDriveTarget(null);
+      fetchCenters();
+    } catch (err) {
+      toast.error(err?.response?.data?.message ?? "Failed to setup Drive");
+    } finally {
+      setSettingUpDrive(false);
+    }
+  };
+
   const columns = [
     {
       header: "Name",
       accessorKey: "name",
       sortKey: "name",
-      cell: ({ row }) => <span className="font-medium text-foreground">{row.original.name}</span>,
+      cell: ({ row }) => (
+        <span className="font-medium text-foreground">{row.original.name}</span>
+      ),
     },
     {
       header: "Address",
       accessorKey: "address",
-      cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.address ?? <span className="italic opacity-50">—</span>}</span>,
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.address ?? <span className="italic opacity-50">—</span>}
+        </span>
+      ),
+    },
+    {
+      header: "Drive",
+      accessorKey: "drive_folder_id",
+      cell: ({ row }) =>
+        row.original.drive_folder_id ? (
+          <span className="text-xs text-success">✓ Connected</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Not set up</span>
+        ),
     },
     {
       header: "Status",
@@ -173,7 +230,11 @@ export default function CentersPage() {
       header: "Created",
       accessorKey: "created_at",
       sortKey: "created_at",
-      cell: ({ row }) => <span className="text-sm text-muted-foreground tabular-nums">{formatDate(row.original.created_at)}</span>,
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {formatDate(row.original.created_at)}
+        </span>
+      ),
     },
     {
       header: "",
@@ -182,6 +243,17 @@ export default function CentersPage() {
         const c = row.original;
         return (
           <div className="flex items-center justify-end gap-1">
+            {!c.drive_folder_id && c.is_active && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-8 h-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                title="Setup Drive folder"
+                onClick={() => setSetupDriveTarget(c)}
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -194,7 +266,12 @@ export default function CentersPage() {
               <Pencil className="w-3.5 h-3.5" />
             </Button>
             {c.is_active && (
-              <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" onClick={() => setDeactivateTarget(c)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-8 h-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => setDeactivateTarget(c)}
+              >
                 <Power className="w-3.5 h-3.5" />
               </Button>
             )}
@@ -227,7 +304,12 @@ export default function CentersPage() {
 
       {/* Search */}
       <div className="flex items-center gap-3">
-        <SearchInput value={search} onChange={(v) => setSearch(v)} placeholder="Search centers..." className="max-w-xs" />
+        <SearchInput
+          value={search}
+          onChange={(v) => setSearch(v)}
+          placeholder="Search centers..."
+          className="max-w-xs"
+        />
         {total > 0 && (
           <span className="text-xs text-muted-foreground">
             {total} center{total !== 1 ? "s" : ""}
@@ -243,7 +325,11 @@ export default function CentersPage() {
         sorting={sorting}
         onSortChange={setSorting}
         emptyTitle="No centers found"
-        emptyDescription={debouncedSearch ? `No centers match "${debouncedSearch}"` : "Start by adding a new center."}
+        emptyDescription={
+          debouncedSearch
+            ? `No centers match "${debouncedSearch}"`
+            : "Start by adding a new center."
+        }
       />
 
       {/* Pagination */}
@@ -272,6 +358,19 @@ export default function CentersPage() {
         variant="destructive"
         loading={deactivating}
         onConfirm={handleDeactivate}
+      />
+
+      {/* Setup Drive Confirm */}
+      <ConfirmDialog
+        open={!!setupDriveTarget}
+        onOpenChange={(v) => {
+          if (!v) setSetupDriveTarget(null);
+        }}
+        title="Setup Drive Folder"
+        description={`Create a Google Drive folder for "${setupDriveTarget?.name}"? This will allow teachers in this center to upload files.`}
+        confirmLabel="Setup Drive"
+        loading={settingUpDrive}
+        onConfirm={handleSetupDrive}
       />
     </div>
   );

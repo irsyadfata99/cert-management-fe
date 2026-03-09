@@ -21,6 +21,8 @@ const teacherService = {
 
   removeCenter: (id, centerId) =>
     api.delete(`/admin/teachers/${id}/centers/${centerId}`).then((r) => r.data),
+
+  getActivity: () => api.get("/teacher/activity").then((r) => r.data),
 };
 
 export default teacherService;
