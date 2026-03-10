@@ -164,7 +164,7 @@ export default function StudentsPage() {
   // [CHANGED] Gunakan getAllForAdmin agar admin tidak kena 403
   useEffect(() => {
     centerService
-      .getAllForAdmin({ limit: 100 })
+      .getAllAdmin({ limit: 100 })
       .then((res) => setCenters(res.data ?? []))
       .catch(() => toast.error("Failed to load centers"));
   }, []);
