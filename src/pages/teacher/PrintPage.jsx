@@ -1,5 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Printer, Plus, Trash2, Upload, CheckCircle2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  Printer,
+  Plus,
+  Trash2,
+  Upload,
+  CheckCircle2,
+  FileText,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -173,14 +181,12 @@ function ColorSwatchPicker({ value, onChange }) {
 }
 
 // ── Upload Scan Button ───────────────────────────────────────
-// Menerima certId langsung dari printedCert.id — tidak perlu fetch ulang
 function UploadScanButton({ certId, onUploadSuccess }) {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
-    console.log("certId:", certId);
     if (!file || !certId) return;
 
     setUploading(true);
@@ -385,17 +391,15 @@ function EnrollmentCombobox({ value, onChange, enrollments, loading }) {
 
 // ── Single Print Tab ─────────────────────────────────────────
 function SinglePrintTab({ enrollments, loadingEnrollments }) {
+  const navigate = useNavigate();
+
   const [selectedEnrollment, setSelectedEnrollment] = useState(null);
   const [ptcDate, setPtcDate] = useState("");
   const [moduleColorKey, setModuleColorKey] = useState("cornflowerblue");
   const [printing, setPrinting] = useState(false);
-
-  // Setelah print berhasil, simpan cert dari response backend
   const [printedCert, setPrintedCert] = useState(null);
-  // Setelah scan diupload
   const [scanUploaded, setScanUploaded] = useState(false);
 
-  // Reset printedCert & scanUploaded saat enrollment berubah
   const handleEnrollmentChange = (e) => {
     setSelectedEnrollment(e);
     setPrintedCert(null);
@@ -418,7 +422,6 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
         fetchFontAsBase64("montserrat", FONT_URLS.montserrat),
       ]);
 
-      // Simpan cert dari response — cert.id dipakai untuk upload scan
       const response = await teacherActionService.printCert({
         enrollment_id: selectedEnrollment.enrollment_id,
         ptc_date: ptcDate,
@@ -515,11 +518,24 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
             />
           )}
 
-          {/* Konfirmasi scan sudah diupload */}
+          {/* ── FIX: Setelah scan diupload, tampilkan tombol ke FinalReportPage ── */}
           {scanUploaded && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 text-sm text-green-700 dark:text-green-300">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>Scan uploaded. You can now create the final report.</span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 text-sm text-green-700 dark:text-green-300">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Scan uploaded successfully.</span>
+              </div>
+              <Button
+                className="w-full"
+                onClick={() =>
+                  navigate("/teacher/final-report", {
+                    state: { enrollment: selectedEnrollment },
+                  })
+                }
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Buat Final Report
+              </Button>
             </div>
           )}
 
