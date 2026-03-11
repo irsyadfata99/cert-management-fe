@@ -12,6 +12,7 @@ import {
   History,
   Award,
   Package,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useAuth from "@/hooks/useAuth";
@@ -36,6 +37,7 @@ const MENUS = {
   teacher: [
     { label: "Dashboard", icon: LayoutDashboard, to: "/teacher/dashboard" },
     { label: "Print", icon: Printer, to: "/teacher/print" },
+    { label: "Final Report", icon: FileText, to: "/teacher/final-report" },
     { label: "History", icon: History, to: "/teacher/history" },
   ],
 };

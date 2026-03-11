@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Printer, Plus, Trash2, CheckCircle2, Upload } from "lucide-react";
+import { Printer, Plus, Trash2, Upload, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,16 @@ const fetchFontAsBase64 = async (name, url) => {
   return base64;
 };
 
+// ── Color options ────────────────────────────────────────────
+const MODULE_COLORS = {
+  magenta: { label: "Magenta", hex: "#d946a8", printValue: "magenta" },
+  cornflowerblue: {
+    label: "Cornflower Blue",
+    hex: "#6495ED",
+    printValue: "cornflowerblue",
+  },
+};
+
 // ── Helpers ──────────────────────────────────────────────────
 const formatPtcDate = (date) => {
   if (!date) return "";
@@ -59,18 +69,15 @@ const formatPtcDate = (date) => {
     .replace(/(\d+) (\w+) (\d+)/, "$1 $2, $3");
 };
 
-const getModuleColor = (moduleName) =>
-  moduleName?.includes("LK") ? "magenta" : "cornflowerblue";
-
 // ── Build print HTML (single cert) ──────────────────────────
 const buildPrintHTML = ({
   studentName,
   moduleName,
   ptcDate,
+  moduleColor,
   playfairBase64,
   montserratBase64,
 }) => {
-  const moduleColor = getModuleColor(moduleName);
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"/><title>Certificate</title>
 <style>
@@ -96,8 +103,7 @@ html,body{width:297mm;height:210mm;overflow:hidden;}
 // ── Build print HTML (batch — multiple pages) ─────────────
 const buildBatchPrintHTML = ({ items, playfairBase64, montserratBase64 }) => {
   const pages = items
-    .map(({ studentName, moduleName, ptcDate }) => {
-      const moduleColor = getModuleColor(moduleName);
+    .map(({ studentName, moduleName, ptcDate, moduleColor }) => {
       return `<div class="certificate">
 <div class="student-name">${studentName || ""}</div>
 <div class="module-name" style="color:${moduleColor}">${moduleName || ""}</div>
@@ -125,31 +131,63 @@ html,body{overflow:hidden;}
 </body></html>`;
 };
 
+// ── Color Swatch Picker ──────────────────────────────────────
+function ColorSwatchPicker({ value, onChange }) {
+  return (
+    <div className="flex items-center gap-2">
+      {Object.entries(MODULE_COLORS).map(([key, color]) => (
+        <button
+          key={key}
+          type="button"
+          title={color.label}
+          onClick={() => onChange(key)}
+          className="relative w-8 h-8 rounded-full border-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1"
+          style={{
+            backgroundColor: color.hex,
+            borderColor: value === key ? "#000" : "transparent",
+            boxShadow:
+              value === key
+                ? "0 0 0 2px #fff, 0 0 0 4px #000"
+                : "0 1px 3px rgba(0,0,0,0.2)",
+            transform: value === key ? "scale(1.15)" : "scale(1)",
+          }}
+        >
+          {value === key && (
+            <span className="absolute inset-0 flex items-center justify-center">
+              <CheckCircle2
+                className="w-3.5 h-3.5"
+                style={{
+                  color: "#fff",
+                  filter: "drop-shadow(0 0 1px rgba(0,0,0,0.5))",
+                }}
+              />
+            </span>
+          )}
+        </button>
+      ))}
+      <span className="text-xs text-muted-foreground ml-1">
+        {MODULE_COLORS[value]?.label}
+      </span>
+    </div>
+  );
+}
+
 // ── Upload Scan Button ───────────────────────────────────────
-function UploadScanButton({ enrollment }) {
+// Menerima certId langsung dari printedCert.id — tidak perlu fetch ulang
+function UploadScanButton({ certId, onUploadSuccess }) {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if (!file || !enrollment) return;
+    console.log("certId:", certId);
+    if (!file || !certId) return;
 
-    // Need cert_id — fetch latest cert for this enrollment
     setUploading(true);
     try {
-      const certs = await teacherActionService.getCertificates({
-        page: 1,
-        limit: 50,
-      });
-      const cert = (certs.data ?? []).find(
-        (c) => c.enrollment_id === enrollment.enrollment_id && !c.is_reprint,
-      );
-      if (!cert) {
-        toast.error("No certificate found for this enrollment. Print first.");
-        return;
-      }
-      await driveService.uploadScan(cert.id, file);
+      await driveService.uploadScan(certId, file);
       toast.success("Scan uploaded successfully");
+      onUploadSuccess?.();
     } catch (err) {
       toast.error(err?.response?.data?.message ?? "Upload failed");
     } finally {
@@ -170,7 +208,7 @@ function UploadScanButton({ enrollment }) {
       <Button
         variant="outline"
         className="w-full"
-        disabled={!enrollment || uploading}
+        disabled={!certId || uploading}
         onClick={() => inputRef.current?.click()}
       >
         <Upload className="w-4 h-4 mr-2" />
@@ -181,7 +219,7 @@ function UploadScanButton({ enrollment }) {
 }
 
 // ── Certificate Preview (scaled) ─────────────────────────────
-function CertPreview({ studentName, moduleName, ptcDate }) {
+function CertPreview({ studentName, moduleName, ptcDate, moduleColorKey }) {
   const containerRef = useRef(null);
   const [scale, setScale] = useState(1);
 
@@ -195,7 +233,8 @@ function CertPreview({ studentName, moduleName, ptcDate }) {
     return () => obs.disconnect();
   }, []);
 
-  const moduleColor = getModuleColor(moduleName);
+  const moduleColorHex =
+    MODULE_COLORS[moduleColorKey]?.hex ?? MODULE_COLORS.cornflowerblue.hex;
 
   return (
     <div
@@ -253,7 +292,7 @@ function CertPreview({ studentName, moduleName, ptcDate }) {
               fontFamily: "'Montserrat', Arial, sans-serif",
               fontSize: "38px",
               fontWeight: 600,
-              color: moduleName ? moduleColor : "#ccc",
+              color: moduleName ? moduleColorHex : "#ccc",
               lineHeight: 1,
               whiteSpace: "nowrap",
             }}
@@ -348,7 +387,20 @@ function EnrollmentCombobox({ value, onChange, enrollments, loading }) {
 function SinglePrintTab({ enrollments, loadingEnrollments }) {
   const [selectedEnrollment, setSelectedEnrollment] = useState(null);
   const [ptcDate, setPtcDate] = useState("");
+  const [moduleColorKey, setModuleColorKey] = useState("cornflowerblue");
   const [printing, setPrinting] = useState(false);
+
+  // Setelah print berhasil, simpan cert dari response backend
+  const [printedCert, setPrintedCert] = useState(null);
+  // Setelah scan diupload
+  const [scanUploaded, setScanUploaded] = useState(false);
+
+  // Reset printedCert & scanUploaded saat enrollment berubah
+  const handleEnrollmentChange = (e) => {
+    setSelectedEnrollment(e);
+    setPrintedCert(null);
+    setScanUploaded(false);
+  };
 
   const handlePrint = async () => {
     if (!selectedEnrollment) {
@@ -366,11 +418,14 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
         fetchFontAsBase64("montserrat", FONT_URLS.montserrat),
       ]);
 
-      // Call backend to record the print
-      await teacherActionService.printCert({
+      // Simpan cert dari response — cert.id dipakai untuk upload scan
+      const response = await teacherActionService.printCert({
         enrollment_id: selectedEnrollment.enrollment_id,
         ptc_date: ptcDate,
       });
+      const cert = response.data;
+      setPrintedCert(cert);
+      setScanUploaded(false);
 
       const printWindow = window.open("", "_blank");
       if (!printWindow) {
@@ -378,11 +433,15 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
         return;
       }
 
+      const moduleColorPrint =
+        MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue";
+
       printWindow.document.write(
         buildPrintHTML({
           studentName: selectedEnrollment.student_name,
           moduleName: selectedEnrollment.module_name,
           ptcDate,
+          moduleColor: moduleColorPrint,
           playfairBase64,
           montserratBase64,
         }),
@@ -410,11 +469,12 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
             </Label>
             <EnrollmentCombobox
               value={selectedEnrollment?.enrollment_id}
-              onChange={setSelectedEnrollment}
+              onChange={handleEnrollmentChange}
               enrollments={enrollments}
               loading={loadingEnrollments}
             />
           </div>
+
           <div className="space-y-1.5">
             <Label>
               PTC Date <span className="text-destructive">*</span>
@@ -426,16 +486,42 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label>Module Name Color</Label>
+            <ColorSwatchPicker
+              value={moduleColorKey}
+              onChange={setModuleColorKey}
+            />
+          </div>
+
           <Button
             className="w-full"
             onClick={handlePrint}
-            disabled={printing || !selectedEnrollment}
+            disabled={printing || !selectedEnrollment || !!printedCert}
           >
             <Printer className="w-4 h-4 mr-2" />
-            {printing ? "Preparing..." : "Print Certificate"}
+            {printing
+              ? "Preparing..."
+              : printedCert
+                ? "Certificate Printed ✓"
+                : "Print Certificate"}
           </Button>
 
-          <UploadScanButton enrollment={selectedEnrollment} />
+          {/* Upload scan — hanya muncul setelah print berhasil */}
+          {printedCert && !scanUploaded && (
+            <UploadScanButton
+              certId={printedCert.id}
+              onUploadSuccess={() => setScanUploaded(true)}
+            />
+          )}
+
+          {/* Konfirmasi scan sudah diupload */}
+          {scanUploaded && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 text-sm text-green-700 dark:text-green-300">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>Scan uploaded. You can now create the final report.</span>
+            </div>
+          )}
 
           {/* Tips */}
           <div
@@ -469,6 +555,7 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
           studentName={selectedEnrollment?.student_name ?? ""}
           moduleName={selectedEnrollment?.module_name ?? ""}
           ptcDate={ptcDate}
+          moduleColorKey={moduleColorKey}
         />
       </div>
     </div>
@@ -476,7 +563,11 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
 }
 
 // ── Batch Print Tab ──────────────────────────────────────────
-const EMPTY_ITEM = () => ({ enrollment: null, ptcDate: "" });
+const EMPTY_ITEM = () => ({
+  enrollment: null,
+  ptcDate: "",
+  moduleColorKey: "cornflowerblue",
+});
 
 function BatchPrintTab({ enrollments, loadingEnrollments }) {
   const [items, setItems] = useState([EMPTY_ITEM()]);
@@ -510,7 +601,6 @@ function BatchPrintTab({ enrollments, loadingEnrollments }) {
         fetchFontAsBase64("montserrat", FONT_URLS.montserrat),
       ]);
 
-      // Call backend batch print
       await teacherActionService.printCertBatch({
         items: valid.map((i) => ({
           enrollment_id: i.enrollment.enrollment_id,
@@ -522,6 +612,8 @@ function BatchPrintTab({ enrollments, loadingEnrollments }) {
         studentName: i.enrollment.student_name,
         moduleName: i.enrollment.module_name,
         ptcDate: i.ptcDate,
+        moduleColor:
+          MODULE_COLORS[i.moduleColorKey]?.printValue ?? "cornflowerblue",
       }));
 
       const printWindow = window.open("", "_blank");
@@ -570,6 +662,13 @@ function BatchPrintTab({ enrollments, loadingEnrollments }) {
                       onChange={(e) =>
                         updateItem(idx, "ptcDate", e.target.value)
                       }
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">Module Name Color</Label>
+                    <ColorSwatchPicker
+                      value={item.moduleColorKey}
+                      onChange={(v) => updateItem(idx, "moduleColorKey", v)}
                     />
                   </div>
                 </div>
@@ -635,7 +734,6 @@ export default function PrintPage() {
   const fetchEnrollments = useCallback(async () => {
     setLoadingEnrollments(true);
     try {
-      // Fetch semua active enrollments (no pagination needed for combobox)
       const res = await teacherActionService.getEnrollments({ limit: 200 });
       setEnrollments(res.data ?? []);
     } catch {

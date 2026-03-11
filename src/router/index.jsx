@@ -25,6 +25,7 @@ import StockPage from "../pages/admin/StockPage";
 // ── Teacher Pages ──
 import TeacherDashboard from "../pages/teacher/DashboardPage";
 import PrintPage from "../pages/teacher/PrintPage";
+import FinalReportPage from "../pages/teacher/FinalReportPage";
 import HistoryPage from "../pages/teacher/HistoryPage";
 
 // ── Misc Pages ──
@@ -90,6 +91,7 @@ const router = createBrowserRouter([
             children: [
               { path: "/teacher/dashboard", element: <TeacherDashboard /> },
               { path: "/teacher/print", element: <PrintPage /> },
+              { path: "/teacher/final-report", element: <FinalReportPage /> },
               { path: "/teacher/history", element: <HistoryPage /> },
             ],
           },

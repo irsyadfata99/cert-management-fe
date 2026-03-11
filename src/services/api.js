@@ -34,7 +34,7 @@ api.interceptors.response.use(
     }
 
     // 403 — tidak punya akses (role tidak sesuai)
-    if (status === 403) {
+    if (status === 403 && currentPath !== "/print") {
       window.location.href = "/forbidden";
     }
 
