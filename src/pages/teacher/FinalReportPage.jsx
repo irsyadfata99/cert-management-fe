@@ -6,12 +6,37 @@ import {
   MessageSquare,
   Upload,
   ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import api from "@/services/api";
+
+// ─── Print Helper ────────────────────────────────────────────
+const printReport = async (reportId) => {
+  try {
+    const res = await api.get(`/drive/reports/${reportId}/download`, {
+      responseType: "arraybuffer",
+    });
+    const blob = new Blob([res.data], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, "_blank");
+    if (!printWindow) return;
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.onafterprint = () => {
+        printWindow.close();
+        URL.revokeObjectURL(url);
+      };
+    };
+  } catch {
+    // Non-blocking — silently fail, user can print manually from Drive
+  }
+};
 
 // ─── Constants ───────────────────────────────────────────────
 const SCORE_VALUES = ["A+", "A", "B+", "B"];
@@ -40,7 +65,18 @@ const SCORE_BAR_WIDTH = {
   "": "0%",
 };
 
-const MIN_WORD_COUNT = 120;
+const MIN_WORD_COUNT = 200;
+
+const EMPTY_FORM = {
+  academic_year: "",
+  period: "",
+  score_creativity: "",
+  score_critical_thinking: "",
+  score_attention: "",
+  score_responsibility: "",
+  score_coding_skills: "",
+  content: "",
+};
 
 // ─── Helpers ─────────────────────────────────────────────────
 const countWords = (text) =>
@@ -85,40 +121,10 @@ function ScoreSelect({ value, onChange }) {
   );
 }
 
-// ─── Main Page ───────────────────────────────────────────────
-export default function FinalReportPage() {
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  const enrollment = location.state?.enrollment;
-
-  const [form, setForm] = useState({
-    academic_year: "",
-    period: "",
-    score_creativity: "",
-    score_critical_thinking: "",
-    score_attention: "",
-    score_responsibility: "",
-    score_coding_skills: "",
-    content: "",
-  });
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [uploaded, setUploaded] = useState(false);
-  const [uploadedData, setUploadedData] = useState(null);
-
+// ─── Report Form ─────────────────────────────────────────────
+function ReportForm({ enrollment, form, setForm, error }) {
   const wordCount = useMemo(() => countWords(form.content), [form.content]);
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
-
-  const allScoresFilled = SKILLS.every((s) => form[s.key] !== "");
-
-  const isFormValid =
-    enrollment?.enrollment_id &&
-    form.academic_year.trim() &&
-    form.period.trim() &&
-    allScoresFilled &&
-    wordCountOk;
 
   const set = (key) => (e) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
@@ -126,110 +132,8 @@ export default function FinalReportPage() {
   const setScore = (key) => (val) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
-  const handleSubmit = async () => {
-    if (!isFormValid) return;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const payload = {
-        enrollment_id: enrollment.enrollment_id,
-        academic_year: form.academic_year.trim(),
-        period: form.period.trim(),
-        score_creativity: form.score_creativity,
-        score_critical_thinking: form.score_critical_thinking,
-        score_attention: form.score_attention,
-        score_responsibility: form.score_responsibility,
-        score_coding_skills: form.score_coding_skills,
-        content: form.content.trim(),
-      };
-
-      const res = await api.post("/teacher/reports", payload);
-      setUploadedData(res.data.data);
-      setUploaded(true);
-    } catch (err) {
-      setError(
-        err.response?.data?.message ??
-          "Failed to upload report. Please try again.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── Guard ──
-  if (!enrollment) {
-    return (
-      <div className="max-w-lg mx-auto py-20 flex flex-col items-center gap-4 text-center">
-        <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
-          <AlertCircle className="w-7 h-7 text-muted-foreground" />
-        </div>
-        <h2 className="text-lg font-semibold text-foreground">
-          No enrollment selected
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Please open this page from the Print page after uploading a scanned
-          certificate.
-        </p>
-        <Button variant="outline" onClick={() => navigate("/teacher/print")}>
-          Go to Print
-        </Button>
-      </div>
-    );
-  }
-
-  // ── Success state ──
-  if (uploaded) {
-    return (
-      <div className="max-w-lg mx-auto py-20 flex flex-col items-center gap-4 text-center">
-        <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
-          <CheckCircle2 className="w-7 h-7 text-emerald-500" />
-        </div>
-        <h2 className="text-lg font-semibold text-foreground">
-          Final Report Uploaded
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Report for{" "}
-          <span className="font-medium text-foreground">
-            {enrollment.student_name}
-          </span>{" "}
-          has been generated and uploaded to Google Drive.
-        </p>
-        {uploadedData?.drive_upload_failed && (
-          <div className="w-full rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-            Report saved but failed to upload to Drive:{" "}
-            {uploadedData.drive_upload_error}
-          </div>
-        )}
-        <div className="flex gap-2 mt-2">
-          <Button variant="outline" onClick={() => navigate("/teacher/print")}>
-            Back to Print
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => navigate("/teacher/history")}
-          >
-            View History
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Main form ──
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <PageHeader
-        title="Final Report"
-        description={`${enrollment.student_name} · ${enrollment.module_name}`}
-        actions={
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </Button>
-        }
-      />
-
+    <div className="space-y-5">
       {/* ── Info bar ── */}
       <div className="glass-card px-5 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
         <span className="text-muted-foreground">
@@ -313,7 +217,7 @@ export default function FinalReportPage() {
           <textarea
             value={form.content}
             onChange={set("content")}
-            placeholder="Write notes about the student's progress, recommendations, or areas to improve. Minimum 120 words."
+            placeholder={`Write notes about the student's progress, recommendations, or areas to improve. Minimum ${MIN_WORD_COUNT} words.`}
             rows={6}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
           />
@@ -346,15 +250,120 @@ export default function FinalReportPage() {
         </div>
       </SectionCard>
 
-      {/* ── Error ── */}
       {error && (
         <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive flex items-start gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           {error}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* ── Actions ── */}
+// ─── Single Mode ─────────────────────────────────────────────
+function SingleMode({ enrollment }) {
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [uploaded, setUploaded] = useState(false);
+  const [uploadedData, setUploadedData] = useState(null);
+
+  const wordCount = useMemo(() => countWords(form.content), [form.content]);
+  const wordCountOk = wordCount >= MIN_WORD_COUNT;
+  const allScoresFilled = SKILLS.every((s) => form[s.key] !== "");
+  const isFormValid =
+    form.academic_year.trim() &&
+    form.period.trim() &&
+    allScoresFilled &&
+    wordCountOk;
+
+  const handleSubmit = async () => {
+    if (!isFormValid) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post("/teacher/reports", {
+        enrollment_id: enrollment.enrollment_id,
+        academic_year: form.academic_year.trim(),
+        period: form.period.trim(),
+        score_creativity: form.score_creativity,
+        score_critical_thinking: form.score_critical_thinking,
+        score_attention: form.score_attention,
+        score_responsibility: form.score_responsibility,
+        score_coding_skills: form.score_coding_skills,
+        content: form.content.trim(),
+      });
+      const data = res.data.data;
+      setUploadedData(data);
+      setUploaded(true);
+      // Auto-open print dialog
+      if (data?.id) printReport(data.id);
+    } catch (err) {
+      setError(
+        err.response?.data?.message ??
+          "Failed to upload report. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (uploaded) {
+    return (
+      <div className="max-w-lg mx-auto py-20 flex flex-col items-center gap-4 text-center">
+        <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
+          <CheckCircle2 className="w-7 h-7 text-emerald-500" />
+        </div>
+        <h2 className="text-lg font-semibold text-foreground">
+          Final Report Uploaded
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Report for{" "}
+          <span className="font-medium text-foreground">
+            {enrollment.student_name}
+          </span>{" "}
+          has been generated and uploaded to Google Drive.
+        </p>
+        {uploadedData?.drive_upload_failed && (
+          <div className="w-full rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+            Report saved but failed to upload to Drive:{" "}
+            {uploadedData.drive_upload_error}
+          </div>
+        )}
+        <div className="flex gap-2 mt-2">
+          <Button variant="outline" onClick={() => navigate("/teacher/print")}>
+            Back to Print
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => navigate("/teacher/history")}
+          >
+            View History
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <PageHeader
+        title="Final Report"
+        description={`${enrollment.student_name} · ${enrollment.module_name}`}
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </Button>
+        }
+      />
+      <ReportForm
+        enrollment={enrollment}
+        form={form}
+        setForm={setForm}
+        error={error}
+      />
       <div className="flex justify-end gap-3 pb-6">
         <Button variant="outline" onClick={() => navigate(-1)}>
           Cancel
@@ -362,7 +371,7 @@ export default function FinalReportPage() {
         <Button onClick={handleSubmit} disabled={!isFormValid || loading}>
           {loading ? (
             <span className="flex items-center gap-2">
-              <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
               Uploading...
             </span>
           ) : (
@@ -373,6 +382,307 @@ export default function FinalReportPage() {
           )}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ─── Batch Mode ──────────────────────────────────────────────
+function BatchMode({ enrollments }) {
+  const navigate = useNavigate();
+
+  // Per-student form state
+  const [forms, setForms] = useState(() =>
+    enrollments.map(() => ({ ...EMPTY_FORM })),
+  );
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [errors, setErrors] = useState(() => enrollments.map(() => null));
+
+  // Upload state
+  const [uploading, setUploading] = useState(false);
+  const [uploadResults, setUploadResults] = useState(null); // null = not started
+
+  const currentEnrollment = enrollments[currentIdx];
+  const currentForm = forms[currentIdx];
+
+  const setCurrentForm = (updater) =>
+    setForms((prev) =>
+      prev.map((f, i) =>
+        i === currentIdx
+          ? typeof updater === "function"
+            ? updater(f)
+            : updater
+          : f,
+      ),
+    );
+
+  const wordCount = useMemo(
+    () => countWords(currentForm.content),
+    [currentForm.content],
+  );
+  const wordCountOk = wordCount >= MIN_WORD_COUNT;
+  const allScoresFilled = SKILLS.every((s) => currentForm[s.key] !== "");
+  const currentFormValid =
+    currentForm.academic_year.trim() &&
+    currentForm.period.trim() &&
+    allScoresFilled &&
+    wordCountOk;
+
+  const allFormsValid = forms.every(
+    (f) =>
+      f.academic_year.trim() &&
+      f.period.trim() &&
+      SKILLS.every((s) => f[s.key] !== "") &&
+      countWords(f.content) >= MIN_WORD_COUNT,
+  );
+
+  const handleUploadAll = async () => {
+    setUploading(true);
+    const results = [];
+
+    for (let i = 0; i < enrollments.length; i++) {
+      const enrollment = enrollments[i];
+      const form = forms[i];
+      try {
+        const res = await api.post("/teacher/reports", {
+          enrollment_id: enrollment.enrollment_id,
+          academic_year: form.academic_year.trim(),
+          period: form.period.trim(),
+          score_creativity: form.score_creativity,
+          score_critical_thinking: form.score_critical_thinking,
+          score_attention: form.score_attention,
+          score_responsibility: form.score_responsibility,
+          score_coding_skills: form.score_coding_skills,
+          content: form.content.trim(),
+        });
+        const data = res.data.data;
+        results.push({ enrollment, success: true, data });
+        // Auto-open print dialog for each report sequentially
+        if (data?.id) printReport(data.id);
+      } catch (err) {
+        results.push({
+          enrollment,
+          success: false,
+          error: err.response?.data?.message ?? "Upload failed",
+        });
+      }
+    }
+
+    setUploadResults(results);
+    setUploading(false);
+  };
+
+  // ── Upload Results Screen ──
+  if (uploadResults) {
+    const allSuccess = uploadResults.every((r) => r.success);
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <PageHeader
+          title="Batch Upload Complete"
+          description={`${uploadResults.filter((r) => r.success).length} of ${uploadResults.length} reports uploaded`}
+        />
+        <div className="space-y-2">
+          {uploadResults.map((result, idx) => (
+            <div
+              key={idx}
+              className={`flex items-center gap-3 p-3 rounded-lg border ${
+                result.success
+                  ? "border-green-200 dark:border-green-800/30 bg-green-50 dark:bg-green-900/10"
+                  : "border-destructive/20 bg-destructive/5"
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {result.enrollment.student_name}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {result.enrollment.module_name}
+                </p>
+              </div>
+              {result.success ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Uploaded
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs text-destructive shrink-0">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {result.error}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate("/teacher/print")}>
+            Back to Print
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => navigate("/teacher/history")}
+          >
+            View History
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Batch Form ──
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <PageHeader
+        title="Final Reports"
+        description="Fill in the report for each student, then upload all at once."
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </Button>
+        }
+      />
+
+      {/* ── Step indicator ── */}
+      <div className="glass-card px-5 py-3 space-y-2">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Student{" "}
+            <span className="font-semibold text-foreground">
+              {currentIdx + 1}
+            </span>{" "}
+            of {enrollments.length}
+          </span>
+          <span>
+            {
+              forms.filter((f, i) => {
+                const e = enrollments[i];
+                return (
+                  f.academic_year.trim() &&
+                  f.period.trim() &&
+                  SKILLS.every((s) => f[s.key] !== "") &&
+                  countWords(f.content) >= MIN_WORD_COUNT
+                );
+              }).length
+            }{" "}
+            / {enrollments.length} ready
+          </span>
+        </div>
+
+        {/* Step dots */}
+        <div className="flex gap-1.5 flex-wrap">
+          {enrollments.map((e, i) => {
+            const f = forms[i];
+            const isReady =
+              f.academic_year.trim() &&
+              f.period.trim() &&
+              SKILLS.every((s) => f[s.key] !== "") &&
+              countWords(f.content) >= MIN_WORD_COUNT;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setCurrentIdx(i)}
+                title={e.student_name}
+                className={`h-2 rounded-full transition-all duration-150 ${
+                  i === currentIdx
+                    ? "w-6 bg-primary"
+                    : isReady
+                      ? "w-2 bg-emerald-500"
+                      : "w-2 bg-muted-foreground/30"
+                }`}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Current student form ── */}
+      <ReportForm
+        enrollment={currentEnrollment}
+        form={currentForm}
+        setForm={setCurrentForm}
+        error={errors[currentIdx]}
+      />
+
+      {/* ── Navigation + Upload ── */}
+      <div className="flex items-center justify-between gap-3 pb-6">
+        <Button
+          variant="outline"
+          onClick={() => setCurrentIdx((i) => i - 1)}
+          disabled={currentIdx === 0}
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" />
+          Prev
+        </Button>
+
+        <div className="flex gap-2">
+          {currentIdx < enrollments.length - 1 ? (
+            <Button
+              onClick={() => setCurrentIdx((i) => i + 1)}
+              disabled={!currentFormValid}
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleUploadAll}
+              disabled={!allFormsValid || uploading}
+            >
+              {uploading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Uploading...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Upload className="w-4 h-4" />
+                  Upload All Reports
+                </span>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ───────────────────────────────────────────────
+export default function FinalReportPage() {
+  const location = useLocation();
+
+  const enrollment = location.state?.enrollment; // single mode
+  const enrollments = location.state?.enrollments; // batch mode
+
+  // ── Guard ──
+  if (!enrollment && !enrollments?.length) {
+    return <NoEnrollmentGuard />;
+  }
+
+  if (enrollments?.length) {
+    return <BatchMode enrollments={enrollments} />;
+  }
+
+  return <SingleMode enrollment={enrollment} />;
+}
+
+function NoEnrollmentGuard() {
+  const navigate = useNavigate();
+  return (
+    <div className="max-w-lg mx-auto py-20 flex flex-col items-center gap-4 text-center">
+      <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+        <AlertCircle className="w-7 h-7 text-muted-foreground" />
+      </div>
+      <h2 className="text-lg font-semibold text-foreground">
+        No enrollment selected
+      </h2>
+      <p className="text-sm text-muted-foreground">
+        Please open this page from the Print page after uploading a scanned
+        certificate.
+      </p>
+      <Button variant="outline" onClick={() => navigate("/teacher/print")}>
+        Go to Print
+      </Button>
     </div>
   );
 }

@@ -626,14 +626,18 @@ function BatchPrintTab({
         })),
       });
 
-      // teacherActionService.printCertBatch returns r.data directly
-      // teacherActionService returns r.data (axios response body)
-      // So response = { success: true, data: { batchId, certs } }
       const certs = response?.data?.certs ?? [];
+
+      // ✅ FIX: Map by enrollment_id instead of by array index
+      // Prevents certId mismatch when DB returns rows in different order
+      const certMap = Object.fromEntries(
+        certs.map((c) => [c.enrollment_id, c]),
+      );
+
       setPrintedCerts(
-        validStudents.map((e, i) => ({
+        validStudents.map((e) => ({
           enrollment: e,
-          certId: certs[i]?.id ?? null,
+          certId: certMap[e.enrollment_id]?.id ?? null,
           scanUploaded: false,
         })),
       );
@@ -700,27 +704,44 @@ function BatchPrintTab({
                   {cert.enrollment.module_name}
                 </p>
               </div>
-              {cert.scanUploaded ? (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 shrink-0">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Uploaded
-                </div>
-              ) : (
-                <div className="shrink-0 w-36">
-                  <UploadScanButton
-                    certId={cert.certId}
-                    onUploadSuccess={() => markScanUploaded(idx)}
-                  />
-                </div>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {cert.scanUploaded ? (
+                  <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Uploaded
+                  </div>
+                ) : (
+                  <div className="w-36">
+                    <UploadScanButton
+                      certId={cert.certId}
+                      onUploadSuccess={() => markScanUploaded(idx)}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
         {allUploaded && (
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 text-sm text-green-700 dark:text-green-300">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            All scans uploaded successfully.
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 text-sm text-green-700 dark:text-green-300">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              All scans uploaded successfully.
+            </div>
+            <Button
+              className="w-full"
+              onClick={() =>
+                navigate("/teacher/final-report", {
+                  state: {
+                    enrollments: printedCerts.map((c) => c.enrollment),
+                  },
+                })
+              }
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Create Final Reports
+            </Button>
           </div>
         )}
 
