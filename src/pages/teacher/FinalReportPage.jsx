@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  FileText,
   CalendarDays,
   Star,
   MessageSquare,
@@ -41,7 +40,7 @@ const SCORE_BAR_WIDTH = {
   "": "0%",
 };
 
-const MIN_WORD_COUNT = 200;
+const MIN_WORD_COUNT = 120;
 
 // ─── Helpers ─────────────────────────────────────────────────
 const countWords = (text) =>
@@ -91,7 +90,6 @@ export default function FinalReportPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Data enrollment dikirim dari PrintPage via navigate state
   const enrollment = location.state?.enrollment;
 
   const [form, setForm] = useState({
@@ -159,7 +157,7 @@ export default function FinalReportPage() {
     }
   };
 
-  // ── Guard: harus datang dari PrintPage ──
+  // ── Guard ──
   if (!enrollment) {
     return (
       <div className="max-w-lg mx-auto py-20 flex flex-col items-center gap-4 text-center">
@@ -170,7 +168,7 @@ export default function FinalReportPage() {
           No enrollment selected
         </h2>
         <p className="text-sm text-muted-foreground">
-          Please open this page from the Print page after printing a
+          Please open this page from the Print page after uploading a scanned
           certificate.
         </p>
         <Button variant="outline" onClick={() => navigate("/teacher/print")}>
@@ -191,27 +189,27 @@ export default function FinalReportPage() {
           Final Report Uploaded
         </h2>
         <p className="text-sm text-muted-foreground">
-          Report untuk{" "}
+          Report for{" "}
           <span className="font-medium text-foreground">
             {enrollment.student_name}
           </span>{" "}
-          berhasil digenerate dan diupload ke Google Drive.
+          has been generated and uploaded to Google Drive.
         </p>
         {uploadedData?.drive_upload_failed && (
           <div className="w-full rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-            Report tersimpan tapi gagal upload ke Drive:{" "}
+            Report saved but failed to upload to Drive:{" "}
             {uploadedData.drive_upload_error}
           </div>
         )}
         <div className="flex gap-2 mt-2">
           <Button variant="outline" onClick={() => navigate("/teacher/print")}>
-            Kembali ke Print
+            Back to Print
           </Button>
           <Button
             variant="outline"
             onClick={() => navigate("/teacher/history")}
           >
-            Lihat History
+            View History
           </Button>
         </div>
       </div>
@@ -227,7 +225,7 @@ export default function FinalReportPage() {
         actions={
           <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
             <ChevronLeft className="w-4 h-4" />
-            Kembali
+            Back
           </Button>
         }
       />
@@ -235,7 +233,7 @@ export default function FinalReportPage() {
       {/* ── Info bar ── */}
       <div className="glass-card px-5 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
         <span className="text-muted-foreground">
-          Siswa:{" "}
+          Student:{" "}
           <span className="font-medium text-foreground">
             {enrollment.student_name}
           </span>
@@ -254,12 +252,12 @@ export default function FinalReportPage() {
         </span>
       </div>
 
-      {/* ── Periode ── */}
-      <SectionCard icon={CalendarDays} title="Periode Belajar">
+      {/* ── Period ── */}
+      <SectionCard icon={CalendarDays} title="Learning Period">
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              Tahun Akademik
+              Academic Year
             </label>
             <input
               type="text"
@@ -309,19 +307,19 @@ export default function FinalReportPage() {
         </div>
       </SectionCard>
 
-      {/* ── Content ── */}
-      <SectionCard icon={MessageSquare} title="Catatan Teacher">
+      {/* ── Comment ── */}
+      <SectionCard icon={MessageSquare} title="Teacher's Notes">
         <div className="space-y-2">
           <textarea
             value={form.content}
             onChange={set("content")}
-            placeholder="Tuliskan catatan perkembangan siswa, rekomendasi, atau hal-hal yang perlu diperhatikan. Minimal 200 kata."
+            placeholder="Write notes about the student's progress, recommendations, or areas to improve. Minimum 120 words."
             rows={6}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
           />
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">
-              Minimal {MIN_WORD_COUNT} kata
+              Minimum {MIN_WORD_COUNT} words
             </span>
             <span
               className={
@@ -332,7 +330,7 @@ export default function FinalReportPage() {
                     : "text-muted-foreground"
               }
             >
-              {wordCount} / {MIN_WORD_COUNT} kata
+              {wordCount} / {MIN_WORD_COUNT} words
             </span>
           </div>
           <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
@@ -359,13 +357,13 @@ export default function FinalReportPage() {
       {/* ── Actions ── */}
       <div className="flex justify-end gap-3 pb-6">
         <Button variant="outline" onClick={() => navigate(-1)}>
-          Batal
+          Cancel
         </Button>
         <Button onClick={handleSubmit} disabled={!isFormValid || loading}>
           {loading ? (
             <span className="flex items-center gap-2">
               <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
-              Mengupload...
+              Uploading...
             </span>
           ) : (
             <span className="flex items-center gap-2">

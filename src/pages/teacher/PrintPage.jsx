@@ -108,13 +108,18 @@ html,body{width:297mm;height:210mm;overflow:hidden;}
 </body></html>`;
 };
 
-// ── Build print HTML (batch — multiple pages) ─────────────
-const buildBatchPrintHTML = ({ items, playfairBase64, montserratBase64 }) => {
+// ── Build print HTML (batch) ─────────────────────────────────
+const buildBatchPrintHTML = ({
+  items,
+  moduleColor,
+  playfairBase64,
+  montserratBase64,
+}) => {
   const pages = items
-    .map(({ studentName, moduleName, ptcDate, moduleColor }) => {
+    .map(({ studentName, moduleName, ptcDate }) => {
       return `<div class="certificate">
 <div class="student-name">${studentName || ""}</div>
-<div class="module-name" style="color:${moduleColor}">${moduleName || ""}</div>
+<div class="module-name">${moduleName || ""}</div>
 <div class="ptc-date">${formatPtcDate(ptcDate)}</div>
 </div>`;
     })
@@ -131,7 +136,7 @@ html,body{overflow:hidden;}
 .certificate{width:297mm;height:210mm;position:relative;background:#fff;page-break-after:always;}
 .certificate:last-child{page-break-after:avoid;}
 .student-name{position:absolute;top:98.8mm;left:0;right:0;text-align:center;font-family:'Playfair Display',Georgia,serif;font-size:34pt;font-weight:400;text-transform:uppercase;color:#000;line-height:1;white-space:nowrap;letter-spacing:0.02em;}
-.module-name{position:absolute;top:142.20mm;left:0;right:0;text-align:center;font-family:'Montserrat',Arial,sans-serif;font-size:28pt;font-weight:600;line-height:1;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.module-name{position:absolute;top:142.20mm;left:0;right:0;text-align:center;font-family:'Montserrat',Arial,sans-serif;font-size:28pt;font-weight:600;color:${moduleColor};line-height:1;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
 .ptc-date{position:absolute;top:172.50mm;left:73.8mm;font-family:'Montserrat',Arial,sans-serif;font-size:18pt;font-weight:600;color:#000;line-height:1;white-space:nowrap;}
 </style></head>
 <body>${pages}
@@ -213,18 +218,19 @@ function UploadScanButton({ certId, onUploadSuccess }) {
       />
       <Button
         variant="outline"
+        size="sm"
         className="w-full"
         disabled={!certId || uploading}
         onClick={() => inputRef.current?.click()}
       >
-        <Upload className="w-4 h-4 mr-2" />
-        {uploading ? "Uploading..." : "Upload Scanned Certificate"}
+        <Upload className="w-3.5 h-3.5 mr-1.5" />
+        {uploading ? "Uploading..." : "Upload Scan"}
       </Button>
     </>
   );
 }
 
-// ── Certificate Preview (scaled) ─────────────────────────────
+// ── Certificate Preview ───────────────────────────────────────
 function CertPreview({ studentName, moduleName, ptcDate, moduleColorKey }) {
   const containerRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -344,18 +350,16 @@ function EnrollmentCombobox({ value, onChange, enrollments, loading }) {
           className="w-full justify-between font-normal"
         >
           {selected ? (
-            <span className="truncate">
-              {selected.student_name} — {selected.module_name}
-            </span>
+            <span className="truncate">{selected.student_name}</span>
           ) : (
-            <span className="text-muted-foreground">Search enrollment...</span>
+            <span className="text-muted-foreground">Select student...</span>
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0" align="start">
+      <PopoverContent className="w-[320px] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search student or module..." />
+          <CommandInput placeholder="Search student..." />
           <CommandList>
             {loading ? (
               <CommandEmpty>Loading...</CommandEmpty>
@@ -366,7 +370,7 @@ function EnrollmentCombobox({ value, onChange, enrollments, loading }) {
                 {enrollments.map((e) => (
                   <CommandItem
                     key={e.enrollment_id}
-                    value={`${e.student_name} ${e.module_name}`}
+                    value={e.student_name}
                     onSelect={() => {
                       onChange(e);
                       setOpen(false);
@@ -436,15 +440,13 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
         return;
       }
 
-      const moduleColorPrint =
-        MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue";
-
       printWindow.document.write(
         buildPrintHTML({
           studentName: selectedEnrollment.student_name,
           moduleName: selectedEnrollment.module_name,
           ptcDate,
-          moduleColor: moduleColorPrint,
+          moduleColor:
+            MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue",
           playfairBase64,
           montserratBase64,
         }),
@@ -460,7 +462,6 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
-      {/* Form */}
       <Card className="lg:sticky lg:top-6">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">Certificate Data</CardTitle>
@@ -510,7 +511,6 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
                 : "Print Certificate"}
           </Button>
 
-          {/* Upload scan — hanya muncul setelah print berhasil */}
           {printedCert && !scanUploaded && (
             <UploadScanButton
               certId={printedCert.id}
@@ -518,7 +518,6 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
             />
           )}
 
-          {/* ── FIX: Setelah scan diupload, tampilkan tombol ke FinalReportPage ── */}
           {scanUploaded && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 text-sm text-green-700 dark:text-green-300">
@@ -534,12 +533,11 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
                 }
               >
                 <FileText className="w-4 h-4 mr-2" />
-                Buat Final Report
+                Create Final Report
               </Button>
             </div>
           )}
 
-          {/* Tips */}
           <div
             className="p-3 rounded-lg text-xs space-y-1"
             style={{ background: "#fef3c7", border: "1px solid #f59e0b" }}
@@ -565,7 +563,6 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
         </CardContent>
       </Card>
 
-      {/* Preview */}
       <div className="w-full max-w-2xl mx-auto lg:mx-0">
         <CertPreview
           studentName={selectedEnrollment?.student_name ?? ""}
@@ -579,34 +576,39 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
 }
 
 // ── Batch Print Tab ──────────────────────────────────────────
-const EMPTY_ITEM = () => ({
-  enrollment: null,
-  ptcDate: "",
-  moduleColorKey: "cornflowerblue",
-});
-
-function BatchPrintTab({ enrollments, loadingEnrollments }) {
-  const [items, setItems] = useState([EMPTY_ITEM()]);
+function BatchPrintTab({
+  enrollments,
+  loadingEnrollments,
+  ptcDate,
+  setPtcDate,
+  moduleColorKey,
+  setModuleColorKey,
+  students,
+  setStudents,
+  printedCerts,
+  setPrintedCerts,
+}) {
   const [printing, setPrinting] = useState(false);
 
-  const updateItem = (idx, field, value) => {
-    setItems((prev) =>
-      prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)),
-    );
-  };
+  const addStudent = () => setStudents((prev) => [...prev, null]);
+  const removeStudent = (idx) =>
+    setStudents((prev) => prev.filter((_, i) => i !== idx));
+  const updateStudent = (idx, enrollment) =>
+    setStudents((prev) => prev.map((s, i) => (i === idx ? enrollment : s)));
 
-  const addItem = () => setItems((prev) => [...prev, EMPTY_ITEM()]);
-  const removeItem = (idx) =>
-    setItems((prev) => prev.filter((_, i) => i !== idx));
+  const validStudents = students.filter(Boolean);
+  const canPrint =
+    ptcDate &&
+    validStudents.length > 0 &&
+    validStudents.length === students.length;
 
   const handleBatchPrint = async () => {
-    const valid = items.filter((i) => i.enrollment && i.ptcDate);
-    if (valid.length === 0) {
-      toast.error("Add at least one complete item");
+    if (!ptcDate) {
+      toast.error("PTC date is required");
       return;
     }
-    if (valid.length !== items.length) {
-      toast.error("Fill in all items or remove incomplete ones");
+    if (students.some((s) => !s)) {
+      toast.error("Fill in all students or remove empty rows");
       return;
     }
 
@@ -617,19 +619,31 @@ function BatchPrintTab({ enrollments, loadingEnrollments }) {
         fetchFontAsBase64("montserrat", FONT_URLS.montserrat),
       ]);
 
-      await teacherActionService.printCertBatch({
-        items: valid.map((i) => ({
-          enrollment_id: i.enrollment.enrollment_id,
-          ptc_date: i.ptcDate,
+      const response = await teacherActionService.printCertBatch({
+        items: validStudents.map((e) => ({
+          enrollment_id: e.enrollment_id,
+          ptc_date: ptcDate,
         })),
       });
 
-      const printItems = valid.map((i) => ({
-        studentName: i.enrollment.student_name,
-        moduleName: i.enrollment.module_name,
-        ptcDate: i.ptcDate,
-        moduleColor:
-          MODULE_COLORS[i.moduleColorKey]?.printValue ?? "cornflowerblue",
+      // teacherActionService.printCertBatch returns r.data directly
+      // teacherActionService returns r.data (axios response body)
+      // So response = { success: true, data: { batchId, certs } }
+      const certs = response?.data?.certs ?? [];
+      setPrintedCerts(
+        validStudents.map((e, i) => ({
+          enrollment: e,
+          certId: certs[i]?.id ?? null,
+          scanUploaded: false,
+        })),
+      );
+
+      const moduleColor =
+        MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue";
+      const printItems = validStudents.map((e) => ({
+        studentName: e.student_name,
+        moduleName: e.module_name,
+        ptcDate,
       }));
 
       const printWindow = window.open("", "_blank");
@@ -640,12 +654,13 @@ function BatchPrintTab({ enrollments, loadingEnrollments }) {
       printWindow.document.write(
         buildBatchPrintHTML({
           items: printItems,
+          moduleColor,
           playfairBase64,
           montserratBase64,
         }),
       );
       printWindow.document.close();
-      toast.success(`${valid.length} certificates sent to printer`);
+      toast.success(`${validStudents.length} certificates sent to printer`);
     } catch (err) {
       toast.error(err?.response?.data?.message ?? "Batch print failed");
     } finally {
@@ -653,76 +668,144 @@ function BatchPrintTab({ enrollments, loadingEnrollments }) {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        {items.map((item, idx) => (
-          <Card key={idx}>
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Enrollment</Label>
-                    <EnrollmentCombobox
-                      value={item.enrollment?.enrollment_id}
-                      onChange={(e) => updateItem(idx, "enrollment", e)}
-                      enrollments={enrollments}
-                      loading={loadingEnrollments}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">PTC Date</Label>
-                    <Input
-                      type="date"
-                      value={item.ptcDate}
-                      onChange={(e) =>
-                        updateItem(idx, "ptcDate", e.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label className="text-xs">Module Name Color</Label>
-                    <ColorSwatchPicker
-                      value={item.moduleColorKey}
-                      onChange={(v) => updateItem(idx, "moduleColorKey", v)}
-                    />
-                  </div>
-                </div>
-                {items.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="mt-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => removeItem(idx)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-              {item.enrollment && (
-                <p className="text-xs text-muted-foreground mt-2 ml-0.5">
-                  {item.enrollment.module_name} · {item.enrollment.center_name}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+  const markScanUploaded = (idx) => {
+    setPrintedCerts((prev) =>
+      prev.map((c, i) => (i === idx ? { ...c, scanUploaded: true } : c)),
+    );
+  };
 
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={addItem}>
+  // ── After print: show upload list ──
+  if (printedCerts) {
+    const allUploaded = printedCerts.every((c) => c.scanUploaded);
+    return (
+      <div className="space-y-4 max-w-xl">
+        <div>
+          <h3 className="text-sm font-semibold">Upload Scanned Certificates</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Upload the scanned certificate for each student below.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {printedCerts.map((cert, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {cert.enrollment.student_name}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {cert.enrollment.module_name}
+                </p>
+              </div>
+              {cert.scanUploaded ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Uploaded
+                </div>
+              ) : (
+                <div className="shrink-0 w-36">
+                  <UploadScanButton
+                    certId={cert.certId}
+                    onUploadSuccess={() => markScanUploaded(idx)}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {allUploaded && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 text-sm text-green-700 dark:text-green-300">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            All scans uploaded successfully.
+          </div>
+        )}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setPrintedCerts(null);
+            setStudents([null]);
+            setPtcDate("");
+          }}
+        >
+          Print Another Batch
+        </Button>
+      </div>
+    );
+  }
+
+  // ── Batch form ──
+  return (
+    <div className="space-y-5 max-w-xl">
+      {/* Shared settings */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Shared Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>
+              PTC Date <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              type="date"
+              value={ptcDate}
+              onChange={(e) => setPtcDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Module Name Color</Label>
+            <ColorSwatchPicker
+              value={moduleColorKey}
+              onChange={setModuleColorKey}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Student list */}
+      <div className="space-y-2">
+        <Label>Students</Label>
+        {students.map((enrollment, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <div className="flex-1">
+              <EnrollmentCombobox
+                value={enrollment?.enrollment_id}
+                onChange={(e) => updateStudent(idx, e)}
+                enrollments={enrollments}
+                loading={loadingEnrollments}
+              />
+            </div>
+            {students.length > 1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => removeStudent(idx)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        ))}
+        <Button variant="outline" size="sm" onClick={addStudent}>
           <Plus className="w-4 h-4 mr-2" /> Add Student
         </Button>
-        <Button size="sm" onClick={handleBatchPrint} disabled={printing}>
-          <Printer className="w-4 h-4 mr-2" />
-          {printing
-            ? "Preparing..."
-            : `Print ${items.filter((i) => i.enrollment && i.ptcDate).length} Certificate(s)`}
-        </Button>
       </div>
 
-      {/* Tips */}
-      <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg text-xs space-y-1 max-w-sm">
+      <Button onClick={handleBatchPrint} disabled={printing || !canPrint}>
+        <Printer className="w-4 h-4 mr-2" />
+        {printing
+          ? "Preparing..."
+          : `Print ${validStudents.length || ""} Certificate(s)`}
+      </Button>
+
+      <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg text-xs space-y-1">
         <p className="font-semibold text-amber-900 dark:text-amber-300">
           Print Tips
         </p>
@@ -746,6 +829,13 @@ function BatchPrintTab({ enrollments, loadingEnrollments }) {
 export default function PrintPage() {
   const [enrollments, setEnrollments] = useState([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
+
+  // Batch state lifted here so it survives tab switching
+  const [batchPtcDate, setBatchPtcDate] = useState("");
+  const [batchModuleColorKey, setBatchModuleColorKey] =
+    useState("cornflowerblue");
+  const [batchStudents, setBatchStudents] = useState([null]);
+  const [batchPrintedCerts, setBatchPrintedCerts] = useState(null);
 
   const fetchEnrollments = useCallback(async () => {
     setLoadingEnrollments(true);
@@ -787,6 +877,14 @@ export default function PrintPage() {
           <BatchPrintTab
             enrollments={enrollments}
             loadingEnrollments={loadingEnrollments}
+            ptcDate={batchPtcDate}
+            setPtcDate={setBatchPtcDate}
+            moduleColorKey={batchModuleColorKey}
+            setModuleColorKey={setBatchModuleColorKey}
+            students={batchStudents}
+            setStudents={setBatchStudents}
+            printedCerts={batchPrintedCerts}
+            setPrintedCerts={setBatchPrintedCerts}
           />
         </TabsContent>
       </Tabs>
