@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   RefreshCw,
   BookOpen,
   Award,
   FileText,
   AlertTriangle,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,9 +21,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import LoadingSkeleton from "@/components/common/LoadingSkeleton";
-import StatusBadge from "@/components/common/StatusBadge";
 import { formatDate } from "@/utils/formatDate";
-import { formatEnrollmentStatus } from "@/utils/formatStatus";
 import teacherActionService from "@/services/teacherActionService";
 import teacherService from "@/services/teacherService";
 import driveService from "@/services/driveService";
@@ -131,7 +131,7 @@ function ActivityChart({ data, loading }) {
       month: format(parseISO(d.month + "-01"), "MMM yy"),
       "Cert Printed": d.cert_printed,
       "Scan Uploaded": d.cert_scan_uploaded,
-      "Medal Printed": d.medal_printed,
+      "Medal Issued": d.medal_printed,
     }));
 
   return (
@@ -179,7 +179,7 @@ function ActivityChart({ data, loading }) {
         />
         <Area
           type="monotone"
-          dataKey="Medal Printed"
+          dataKey="Medal Issued"
           stroke="#f59e0b"
           fill="url(#gMedal)"
           strokeWidth={2}
@@ -189,31 +189,99 @@ function ActivityChart({ data, loading }) {
   );
 }
 
+// ── Recent Certificates Card ─────────────────────────────────
+function RecentCertificates({ certificates, loading }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold">
+          Recent Certificates
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <LoadingSkeleton rows={5} />
+        ) : certificates.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No certificates printed yet
+          </p>
+        ) : (
+          [...certificates]
+            .sort((a, b) => (a.scan_file_id ? 1 : 0) - (b.scan_file_id ? 1 : 0))
+            .slice(0, 5)
+            .map((c) => (
+              <div
+                key={c.id}
+                className="flex items-start justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {c.student_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {c.module_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(c.printed_at)}
+                  </p>
+                </div>
+                <div className="shrink-0 mt-0.5">
+                  {c.scan_file_id ? (
+                    <span className="flex items-center gap-1 text-xs text-emerald-500 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Scanned
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-amber-500 font-medium">
+                      <Clock className="w-3.5 h-3.5" />
+                      Pending
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────
 export default function TeacherDashboardPage() {
-  const [enrollments, setEnrollments] = useState([]);
+  const [certificates, setCertificates] = useState([]);
   const [activity, setActivity] = useState([]);
   const [stock, setStock] = useState(null);
   const [total, setTotal] = useState({ enrollments: 0, certs: 0, reports: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const hasFetched = useRef(false);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
 
     try {
-      const [enrollRes, certsRes, reportsRes, activityRes, stockRes] =
-        await Promise.allSettled([
-          teacherActionService.getEnrollments({ page: 1, limit: 5 }),
-          teacherActionService.getCertificates({ page: 1, limit: 1 }),
-          teacherActionService.getReports({ page: 1, limit: 1 }),
-          teacherService.getActivity(),
-          driveService.getTeacherStock(),
-        ]);
+      const [
+        enrollRes,
+        certsRes,
+        reportsRes,
+        activityRes,
+        stockRes,
+        recentCertsRes,
+      ] = await Promise.allSettled([
+        teacherActionService.getEnrollments({ page: 1, limit: 1 }),
+        teacherActionService.getCertificates({ page: 1, limit: 1 }),
+        teacherActionService.getReports({ page: 1, limit: 1 }),
+        teacherService.getActivity(),
+        driveService.getTeacherStock(),
+        teacherActionService.getCertificates({
+          page: 1,
+          limit: 20,
+          is_reprint: "false",
+        }),
+      ]);
 
       if (enrollRes.status === "fulfilled") {
-        setEnrollments(enrollRes.value.data ?? []);
         setTotal((t) => ({
           ...t,
           enrollments: enrollRes.value.pagination?.total ?? 0,
@@ -237,6 +305,9 @@ export default function TeacherDashboardPage() {
       if (stockRes.status === "fulfilled") {
         setStock(stockRes.value.data);
       }
+      if (recentCertsRes.status === "fulfilled") {
+        setCertificates(recentCertsRes.value.data ?? []);
+      }
     } catch {
       toast.error("Failed to load dashboard");
     } finally {
@@ -246,6 +317,8 @@ export default function TeacherDashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
     fetchAll();
   }, [fetchAll]);
 
@@ -295,7 +368,7 @@ export default function TeacherDashboardPage() {
         <StockCard stock={stock} loading={loading} />
       </div>
 
-      {/* Chart + Recent Enrollments */}
+      {/* Chart + Recent Certificates */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Chart */}
         <Card className="lg:col-span-2">
@@ -309,48 +382,8 @@ export default function TeacherDashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Enrollments */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">
-              Recent Enrollments
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? (
-              <LoadingSkeleton rows={5} />
-            ) : enrollments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No enrollments yet
-              </p>
-            ) : (
-              enrollments.map((e) => {
-                const { label, variant } = formatEnrollmentStatus(
-                  e.enrollment_status,
-                );
-                return (
-                  <div
-                    key={e.enrollment_id}
-                    className="flex items-start justify-between gap-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {e.student_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {e.module_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(e.enrolled_at)}
-                      </p>
-                    </div>
-                    <StatusBadge label={label} variant={variant} dot />
-                  </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
+        {/* Recent Certificates */}
+        <RecentCertificates certificates={certificates} loading={loading} />
       </div>
     </div>
   );

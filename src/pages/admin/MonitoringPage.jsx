@@ -347,11 +347,11 @@ export default function AdminMonitoringPage() {
       ),
     },
     {
-      header: "Medal Printed",
-      accessorKey: "medal_printed",
+      header: "Medal Issued",
+      accessorKey: "medal_issued",
       cell: ({ row }) => (
         <span className="text-sm tabular-nums">
-          {row.original.medal_printed ?? 0}
+          {row.original.medal_issued ?? 0}
         </span>
       ),
     },

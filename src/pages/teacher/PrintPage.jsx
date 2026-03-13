@@ -7,10 +7,12 @@ import {
   Upload,
   CheckCircle2,
   FileText,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -393,72 +395,219 @@ function EnrollmentCombobox({ value, onChange, enrollments, loading }) {
   );
 }
 
+// ── Certificate Combobox (for reprint) ───────────────────────
+function CertificateCombobox({ value, onChange, certificates, loading }) {
+  const [open, setOpen] = useState(false);
+  const selected = certificates.find((c) => c.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          className="w-full justify-between font-normal"
+        >
+          {selected ? (
+            <span className="truncate">{selected.student_name}</span>
+          ) : (
+            <span className="text-muted-foreground">Select certificate...</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[340px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search student..." />
+          <CommandList>
+            {loading ? (
+              <CommandEmpty>Loading...</CommandEmpty>
+            ) : certificates.length === 0 ? (
+              <CommandEmpty>No printed certificates found.</CommandEmpty>
+            ) : (
+              <CommandGroup>
+                {certificates.map((c) => (
+                  <CommandItem
+                    key={c.id}
+                    value={c.student_name}
+                    onSelect={() => {
+                      onChange(c);
+                      setOpen(false);
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium">{c.student_name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {c.module_name} · {c.cert_unique_id}
+                      </span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Single Print Tab ─────────────────────────────────────────
-function SinglePrintTab({ enrollments, loadingEnrollments }) {
+function SinglePrintTab({
+  enrollments,
+  loadingEnrollments,
+  certificates,
+  loadingCertificates,
+}) {
   const navigate = useNavigate();
 
+  // Mode
+  const [isReprint, setIsReprint] = useState(false);
+
+  // Normal print state
   const [selectedEnrollment, setSelectedEnrollment] = useState(null);
+
+  // Reprint state
+  const [selectedCert, setSelectedCert] = useState(null);
+
+  // Shared
   const [ptcDate, setPtcDate] = useState("");
   const [moduleColorKey, setModuleColorKey] = useState("cornflowerblue");
   const [printing, setPrinting] = useState(false);
   const [printedCert, setPrintedCert] = useState(null);
   const [scanUploaded, setScanUploaded] = useState(false);
 
-  const handleEnrollmentChange = (e) => {
-    setSelectedEnrollment(e);
+  // Reset state when toggling mode
+  const handleToggleReprint = (checked) => {
+    setIsReprint(checked);
+    setSelectedEnrollment(null);
+    setSelectedCert(null);
+    setPtcDate("");
     setPrintedCert(null);
     setScanUploaded(false);
   };
 
+  // Preview data — derive from selected enrollment or cert
+  const previewStudent = isReprint
+    ? (selectedCert?.student_name ?? "")
+    : (selectedEnrollment?.student_name ?? "");
+  const previewModule = isReprint
+    ? (selectedCert?.module_name ?? "")
+    : (selectedEnrollment?.module_name ?? "");
+  const previewPtcDate = isReprint
+    ? selectedCert?.ptc_date
+      ? String(selectedCert.ptc_date).split("T")[0]
+      : ""
+    : ptcDate;
+
   const handlePrint = async () => {
-    if (!selectedEnrollment) {
-      toast.error("Please select an enrollment");
-      return;
-    }
-    if (!ptcDate) {
-      toast.error("PTC date is required");
-      return;
-    }
-    setPrinting(true);
-    try {
-      const [playfairBase64, montserratBase64] = await Promise.all([
-        fetchFontAsBase64("playfair", FONT_URLS.playfair),
-        fetchFontAsBase64("montserrat", FONT_URLS.montserrat),
-      ]);
-
-      const response = await teacherActionService.printCert({
-        enrollment_id: selectedEnrollment.enrollment_id,
-        ptc_date: ptcDate,
-      });
-      const cert = response.data;
-      setPrintedCert(cert);
-      setScanUploaded(false);
-
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast.error("Popup blocked. Allow popups and try again.");
+    if (isReprint) {
+      if (!selectedCert) {
+        toast.error("Please select a certificate to reprint");
         return;
       }
 
-      printWindow.document.write(
-        buildPrintHTML({
-          studentName: selectedEnrollment.student_name,
-          moduleName: selectedEnrollment.module_name,
-          ptcDate,
-          moduleColor:
-            MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue",
-          playfairBase64,
-          montserratBase64,
-        }),
-      );
-      printWindow.document.close();
-      toast.success("Certificate sent to printer");
-    } catch (err) {
-      toast.error(err?.response?.data?.message ?? "Print failed");
-    } finally {
-      setPrinting(false);
+      // Normalize ptc_date → YYYY-MM-DD (guard against ISO string or null)
+      const normalizedPtcDate = selectedCert.ptc_date
+        ? String(selectedCert.ptc_date).split("T")[0]
+        : null;
+
+      if (!normalizedPtcDate) {
+        toast.error("Original certificate has no PTC date. Cannot reprint.");
+        return;
+      }
+
+      setPrinting(true);
+      try {
+        const [playfairBase64, montserratBase64] = await Promise.all([
+          fetchFontAsBase64("playfair", FONT_URLS.playfair),
+          fetchFontAsBase64("montserrat", FONT_URLS.montserrat),
+        ]);
+
+        const response = await teacherActionService.reprintCert({
+          original_cert_id: selectedCert.id,
+          ptc_date: normalizedPtcDate,
+        });
+        const cert = response.data;
+        setPrintedCert(cert);
+        setScanUploaded(false);
+
+        const printWindow = window.open("", "_blank");
+        if (!printWindow) {
+          toast.error("Popup blocked. Allow popups and try again.");
+          return;
+        }
+        printWindow.document.write(
+          buildPrintHTML({
+            studentName: selectedCert.student_name,
+            moduleName: selectedCert.module_name,
+            ptcDate: normalizedPtcDate,
+            moduleColor:
+              MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue",
+            playfairBase64,
+            montserratBase64,
+          }),
+        );
+        printWindow.document.close();
+        toast.success("Reprint sent to printer");
+      } catch (err) {
+        toast.error(err?.response?.data?.message ?? "Reprint failed");
+      } finally {
+        setPrinting(false);
+      }
+    } else {
+      if (!selectedEnrollment) {
+        toast.error("Please select an enrollment");
+        return;
+      }
+      if (!ptcDate) {
+        toast.error("PTC date is required");
+        return;
+      }
+      setPrinting(true);
+      try {
+        const [playfairBase64, montserratBase64] = await Promise.all([
+          fetchFontAsBase64("playfair", FONT_URLS.playfair),
+          fetchFontAsBase64("montserrat", FONT_URLS.montserrat),
+        ]);
+
+        const response = await teacherActionService.printCert({
+          enrollment_id: selectedEnrollment.enrollment_id,
+          ptc_date: ptcDate,
+        });
+        const cert = response.data;
+        setPrintedCert(cert);
+        setScanUploaded(false);
+
+        const printWindow = window.open("", "_blank");
+        if (!printWindow) {
+          toast.error("Popup blocked. Allow popups and try again.");
+          return;
+        }
+        printWindow.document.write(
+          buildPrintHTML({
+            studentName: selectedEnrollment.student_name,
+            moduleName: selectedEnrollment.module_name,
+            ptcDate,
+            moduleColor:
+              MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue",
+            playfairBase64,
+            montserratBase64,
+          }),
+        );
+        printWindow.document.close();
+        toast.success("Certificate sent to printer");
+      } catch (err) {
+        toast.error(err?.response?.data?.message ?? "Print failed");
+      } finally {
+        setPrinting(false);
+      }
     }
   };
+
+  const canPrint = isReprint
+    ? !!selectedCert && !printedCert
+    : !!selectedEnrollment && !!ptcDate && !printedCert;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
@@ -467,29 +616,82 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
           <CardTitle className="text-sm">Certificate Data</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>
-              Enrollment <span className="text-destructive">*</span>
-            </Label>
-            <EnrollmentCombobox
-              value={selectedEnrollment?.enrollment_id}
-              onChange={handleEnrollmentChange}
-              enrollments={enrollments}
-              loading={loadingEnrollments}
+          {/* ── Reprint toggle ── */}
+          <div className="flex items-center gap-2.5 p-3 rounded-lg border border-border bg-muted/30">
+            <Checkbox
+              id="reprint-toggle"
+              checked={isReprint}
+              onCheckedChange={handleToggleReprint}
             />
+            <div className="flex flex-col">
+              <label
+                htmlFor="reprint-toggle"
+                className="text-sm font-medium cursor-pointer select-none"
+              >
+                This is a reprint
+              </label>
+              <span className="text-xs text-muted-foreground">
+                Select an existing certificate to reprint
+              </span>
+            </div>
           </div>
 
+          {/* ── Enrollment or Certificate selector ── */}
           <div className="space-y-1.5">
             <Label>
-              PTC Date <span className="text-destructive">*</span>
+              {isReprint ? "Certificate" : "Enrollment"}{" "}
+              <span className="text-destructive">*</span>
             </Label>
-            <Input
-              type="date"
-              value={ptcDate}
-              onChange={(e) => setPtcDate(e.target.value)}
-            />
+            {isReprint ? (
+              <CertificateCombobox
+                value={selectedCert?.id}
+                onChange={(c) => {
+                  setSelectedCert(c);
+                  setPrintedCert(null);
+                  setScanUploaded(false);
+                }}
+                certificates={certificates}
+                loading={loadingCertificates}
+              />
+            ) : (
+              <EnrollmentCombobox
+                value={selectedEnrollment?.enrollment_id}
+                onChange={(e) => {
+                  setSelectedEnrollment(e);
+                  setPrintedCert(null);
+                  setScanUploaded(false);
+                }}
+                enrollments={enrollments}
+                loading={loadingEnrollments}
+              />
+            )}
           </div>
 
+          {/* ── PTC Date ── */}
+          {!isReprint ? (
+            <div className="space-y-1.5">
+              <Label>
+                PTC Date <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                type="date"
+                value={ptcDate}
+                onChange={(e) => setPtcDate(e.target.value)}
+              />
+            </div>
+          ) : selectedCert?.ptc_date ? (
+            <div className="space-y-1.5">
+              <Label>PTC Date</Label>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/40 text-sm text-muted-foreground">
+                <span className="text-foreground font-medium">
+                  {formatPtcDate(selectedCert.ptc_date)}
+                </span>
+                <span className="text-xs">(from original)</span>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ── Color ── */}
           <div className="space-y-1.5">
             <Label>Module Name Color</Label>
             <ColorSwatchPicker
@@ -498,20 +700,47 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
             />
           </div>
 
+          {/* ── Print button ── */}
           <Button
             className="w-full"
+            variant={isReprint ? "warning" : "default"}
             onClick={handlePrint}
-            disabled={printing || !selectedEnrollment || !!printedCert}
+            disabled={printing || !canPrint}
+            style={
+              isReprint && !printing && canPrint
+                ? {
+                    background: "hsl(38,92%,50%)",
+                    color: "#000",
+                  }
+                : {}
+            }
           >
-            <Printer className="w-4 h-4 mr-2" />
+            {isReprint ? (
+              <RotateCcw className="w-4 h-4 mr-2" />
+            ) : (
+              <Printer className="w-4 h-4 mr-2" />
+            )}
             {printing
               ? "Preparing..."
               : printedCert
-                ? "Certificate Printed ✓"
-                : "Print Certificate"}
+                ? isReprint
+                  ? "Reprinted ✓"
+                  : "Certificate Printed ✓"
+                : isReprint
+                  ? "Reprint Certificate"
+                  : "Print Certificate"}
           </Button>
 
-          {printedCert && !scanUploaded && (
+          {/* ── Reprint notice ── */}
+          {isReprint && !printedCert && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5 px-1">
+              <RotateCcw className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              Reprinting will deduct 1 certificate from your center's stock.
+            </p>
+          )}
+
+          {/* ── Upload scan (after normal print only) ── */}
+          {printedCert && !isReprint && !scanUploaded && (
             <UploadScanButton
               certId={printedCert.id}
               onUploadSuccess={() => setScanUploaded(true)}
@@ -538,6 +767,7 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
             </div>
           )}
 
+          {/* ── Print tips ── */}
           <div
             className="p-3 rounded-lg text-xs space-y-1"
             style={{ background: "#fef3c7", border: "1px solid #f59e0b" }}
@@ -565,9 +795,9 @@ function SinglePrintTab({ enrollments, loadingEnrollments }) {
 
       <div className="w-full max-w-2xl mx-auto lg:mx-0">
         <CertPreview
-          studentName={selectedEnrollment?.student_name ?? ""}
-          moduleName={selectedEnrollment?.module_name ?? ""}
-          ptcDate={ptcDate}
+          studentName={previewStudent}
+          moduleName={previewModule}
+          ptcDate={previewPtcDate}
           moduleColorKey={moduleColorKey}
         />
       </div>
@@ -588,6 +818,7 @@ function BatchPrintTab({
   printedCerts,
   setPrintedCerts,
 }) {
+  const navigate = useNavigate();
   const [printing, setPrinting] = useState(false);
 
   const addStudent = () => setStudents((prev) => [...prev, null]);
@@ -627,9 +858,6 @@ function BatchPrintTab({
       });
 
       const certs = response?.data?.certs ?? [];
-
-      // ✅ FIX: Map by enrollment_id instead of by array index
-      // Prevents certId mismatch when DB returns rows in different order
       const certMap = Object.fromEntries(
         certs.map((c) => [c.enrollment_id, c]),
       );
@@ -678,7 +906,6 @@ function BatchPrintTab({
     );
   };
 
-  // ── After print: show upload list ──
   if (printedCerts) {
     const allUploaded = printedCerts.every((c) => c.scanUploaded);
     return (
@@ -760,10 +987,8 @@ function BatchPrintTab({
     );
   }
 
-  // ── Batch form ──
   return (
     <div className="space-y-5 max-w-xl">
-      {/* Shared settings */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">Shared Settings</CardTitle>
@@ -789,7 +1014,6 @@ function BatchPrintTab({
         </CardContent>
       </Card>
 
-      {/* Student list */}
       <div className="space-y-2">
         <Label>Students</Label>
         {students.map((enrollment, idx) => (
@@ -851,7 +1075,10 @@ export default function PrintPage() {
   const [enrollments, setEnrollments] = useState([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
 
-  // Batch state lifted here so it survives tab switching
+  // Non-reprint certificates for the reprint combobox
+  const [certificates, setCertificates] = useState([]);
+  const [loadingCertificates, setLoadingCertificates] = useState(true);
+
   const [batchPtcDate, setBatchPtcDate] = useState("");
   const [batchModuleColorKey, setBatchModuleColorKey] =
     useState("cornflowerblue");
@@ -870,9 +1097,26 @@ export default function PrintPage() {
     }
   }, []);
 
+  const fetchCertificates = useCallback(async () => {
+    setLoadingCertificates(true);
+    try {
+      // Only fetch original prints (not reprints) for the reprint selector
+      const res = await teacherActionService.getCertificates({
+        limit: 200,
+        is_reprint: false,
+      });
+      setCertificates(res.data ?? []);
+    } catch {
+      toast.error("Failed to load certificates");
+    } finally {
+      setLoadingCertificates(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEnrollments();
-  }, [fetchEnrollments]);
+    fetchCertificates();
+  }, [fetchEnrollments, fetchCertificates]);
 
   return (
     <div className="space-y-6">
@@ -892,6 +1136,8 @@ export default function PrintPage() {
           <SinglePrintTab
             enrollments={enrollments}
             loadingEnrollments={loadingEnrollments}
+            certificates={certificates}
+            loadingCertificates={loadingCertificates}
           />
         </TabsContent>
         <TabsContent value="batch" className="mt-4">

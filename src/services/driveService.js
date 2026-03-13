@@ -39,6 +39,13 @@ const driveService = {
       })
       .then((r) => r.data);
   },
+
+  // ── Download report PDF (for re-print) ──
+  // Returns a Blob — open in new tab so user can print from PDF viewer
+  downloadReport: (reportId) =>
+    api
+      .get(`/drive/reports/${reportId}/download`, { responseType: "blob" })
+      .then((r) => r.data),
 };
 
 export default driveService;

@@ -281,12 +281,12 @@ export default function SuperAdminMonitoringPage() {
         grouped[month] = {
           month,
           cert_printed: 0,
-          medal_printed: 0,
+          medal_issued: 0,
           cert_scan_uploaded: 0,
         };
       }
       grouped[month].cert_printed += Number(row.cert_printed ?? 0);
-      grouped[month].medal_printed += Number(row.medal_printed ?? 0);
+      grouped[month].medal_issued += Number(row.medal_printed ?? 0); // ✅ FIX
       grouped[month].cert_scan_uploaded += Number(row.cert_scan_uploaded ?? 0);
     }
     return Object.values(grouped).slice(0, 12).reverse();
@@ -451,8 +451,8 @@ export default function SuperAdminMonitoringPage() {
                 />
                 <Area
                   type="monotone"
-                  dataKey="medal_printed"
-                  name="Medal Printed"
+                  dataKey="medal_issued"
+                  name="Medal Issued"
                   stroke="hsl(144,79%,50%)"
                   fill="url(#medalGrad)"
                   strokeWidth={2}

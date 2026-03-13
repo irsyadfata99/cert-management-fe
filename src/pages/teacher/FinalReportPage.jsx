@@ -25,7 +25,6 @@ import { toast } from "sonner";
 
 // ─── Print Helper ────────────────────────────────────────────
 const printReport = async (reportId) => {
-  // Open window BEFORE await — must be synchronous from user gesture
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     toast.error("Popup blocked. Allow popups and try again.");
@@ -53,8 +52,19 @@ const printReport = async (reportId) => {
       };
     };
   } catch {
-    // Non-blocking — silently fail, user can print manually from Drive
     printWindow.close();
+  }
+};
+
+// ─── FIX: Print batch reports sequentially with delay ────────
+// Browser blocks multiple window.open() calls fired in rapid succession.
+// Opening one tab at a time with a small delay avoids popup blocking.
+const printReportsBatch = async (reportIds) => {
+  for (let i = 0; i < reportIds.length; i++) {
+    if (i > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    await printReport(reportIds[i]);
   }
 };
 
@@ -176,7 +186,6 @@ function ReportForm({ enrollment, form, setForm, error }) {
 
   return (
     <div className="space-y-5">
-      {/* ── Info bar ── */}
       <div className="glass-card px-5 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
         <span className="text-muted-foreground">
           Student:{" "}
@@ -198,10 +207,8 @@ function ReportForm({ enrollment, form, setForm, error }) {
         </span>
       </div>
 
-      {/* ── Period ── */}
       <SectionCard icon={CalendarDays} title="Learning Period">
         <div className="grid grid-cols-2 gap-4">
-          {/* Academic Year */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
               Academic Year
@@ -213,7 +220,6 @@ function ReportForm({ enrollment, form, setForm, error }) {
                   setForm((prev) => ({
                     ...prev,
                     year_start: val,
-                    // reset end if it's now before start
                     year_end:
                       prev.year_end && Number(prev.year_end) < Number(val)
                         ? ""
@@ -261,7 +267,6 @@ function ReportForm({ enrollment, form, setForm, error }) {
             )}
           </div>
 
-          {/* Period */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
               Period
@@ -273,11 +278,7 @@ function ReportForm({ enrollment, form, setForm, error }) {
                   setForm((prev) => ({
                     ...prev,
                     period_start: val,
-                    period_end:
-                      prev.period_end &&
-                      MONTHS.indexOf(prev.period_end) < MONTHS.indexOf(val)
-                        ? ""
-                        : prev.period_end,
+                    period_end: prev.period_end === val ? "" : prev.period_end,
                   }))
                 }
               >
@@ -304,11 +305,7 @@ function ReportForm({ enrollment, form, setForm, error }) {
                   <SelectValue placeholder="End" />
                 </SelectTrigger>
                 <SelectContent position="popper">
-                  {MONTHS.filter(
-                    (m) =>
-                      !form.period_start ||
-                      MONTHS.indexOf(m) >= MONTHS.indexOf(form.period_start),
-                  ).map((m) => (
+                  {MONTHS.map((m) => (
                     <SelectItem key={m} value={m}>
                       {m}
                     </SelectItem>
@@ -327,7 +324,6 @@ function ReportForm({ enrollment, form, setForm, error }) {
         </div>
       </SectionCard>
 
-      {/* ── Scores ── */}
       <SectionCard icon={Star} title="Scores per Skill">
         <div className="space-y-3.5">
           {SKILLS.map((skill) => {
@@ -352,7 +348,6 @@ function ReportForm({ enrollment, form, setForm, error }) {
         </div>
       </SectionCard>
 
-      {/* ── Comment ── */}
       <SectionCard icon={MessageSquare} title="Teacher's Notes">
         <div className="space-y-2">
           <textarea
@@ -443,7 +438,6 @@ function SingleMode({ enrollment }) {
       const data = res.data.data;
       setUploadedData(data);
       setUploaded(true);
-      // Auto-open print dialog
       if (data?.id) printReport(data.id);
     } catch (err) {
       setError(
@@ -536,16 +530,13 @@ function SingleMode({ enrollment }) {
 function BatchMode({ enrollments }) {
   const navigate = useNavigate();
 
-  // Per-student form state
   const [forms, setForms] = useState(() =>
     enrollments.map(() => ({ ...EMPTY_FORM })),
   );
   const [currentIdx, setCurrentIdx] = useState(0);
   const [errors] = useState(() => enrollments.map(() => null));
-
-  // Upload state
   const [uploading, setUploading] = useState(false);
-  const [uploadResults, setUploadResults] = useState(null); // null = not started
+  const [uploadResults, setUploadResults] = useState(null);
 
   const currentEnrollment = enrollments[currentIdx];
   const currentForm = forms[currentIdx];
@@ -575,19 +566,20 @@ function BatchMode({ enrollments }) {
     allScoresFilled &&
     wordCountOk;
 
-  const allFormsValid = forms.every(
-    (f) =>
-      f.year_start &&
-      f.year_end &&
-      f.period_start &&
-      f.period_end &&
-      SKILLS.every((s) => f[s.key] !== "") &&
-      countWords(f.content) >= MIN_WORD_COUNT,
-  );
+  const isFormReady = (f) =>
+    f.year_start &&
+    f.year_end &&
+    f.period_start &&
+    f.period_end &&
+    SKILLS.every((s) => f[s.key] !== "") &&
+    countWords(f.content) >= MIN_WORD_COUNT;
+
+  const allFormsValid = forms.every(isFormReady);
 
   const handleUploadAll = async () => {
     setUploading(true);
     const results = [];
+    const successfulReportIds = []; // ← kumpulkan semua ID dulu
 
     for (let i = 0; i < enrollments.length; i++) {
       const enrollment = enrollments[i];
@@ -609,8 +601,7 @@ function BatchMode({ enrollments }) {
         });
         const data = res.data.data;
         results.push({ enrollment, success: true, data });
-        // Auto-open print dialog for each report sequentially
-        if (data?.id) printReport(data.id);
+        if (data?.id) successfulReportIds.push(data.id); // ← kumpulkan, jangan print dulu
       } catch (err) {
         results.push({
           enrollment,
@@ -622,9 +613,16 @@ function BatchMode({ enrollments }) {
 
     setUploadResults(results);
     setUploading(false);
+
+    // FIX: Print semua report secara sequential SETELAH semua upload selesai.
+    // Sebelumnya printReport() dipanggil di dalam loop upload — browser memblokir
+    // window.open() ke-2 dan seterusnya karena dianggap bukan user-initiated event.
+    // Solusi: kumpulkan semua ID, lalu buka tab satu per satu dengan jeda 800ms.
+    if (successfulReportIds.length > 0) {
+      printReportsBatch(successfulReportIds);
+    }
   };
 
-  // ── Upload Results Screen ──
   if (uploadResults) {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
@@ -679,7 +677,6 @@ function BatchMode({ enrollments }) {
     );
   }
 
-  // ── Batch Form ──
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <PageHeader
@@ -704,33 +701,12 @@ function BatchMode({ enrollments }) {
             of {enrollments.length}
           </span>
           <span>
-            {
-              forms.filter((f) => {
-                return (
-                  f.year_start &&
-                  f.year_end &&
-                  f.period_start &&
-                  f.period_end &&
-                  SKILLS.every((s) => f[s.key] !== "") &&
-                  countWords(f.content) >= MIN_WORD_COUNT
-                );
-              }).length
-            }{" "}
-            / {enrollments.length} ready
+            {forms.filter(isFormReady).length} / {enrollments.length} ready
           </span>
         </div>
-
-        {/* Step dots */}
         <div className="flex gap-1.5 flex-wrap">
           {enrollments.map((e, i) => {
-            const f = forms[i];
-            const isReady =
-              f.year_start &&
-              f.year_end &&
-              f.period_start &&
-              f.period_end &&
-              SKILLS.every((s) => f[s.key] !== "") &&
-              countWords(f.content) >= MIN_WORD_COUNT;
+            const ready = isFormReady(forms[i]);
             return (
               <button
                 key={i}
@@ -740,7 +716,7 @@ function BatchMode({ enrollments }) {
                 className={`h-2 rounded-full transition-all duration-150 ${
                   i === currentIdx
                     ? "w-6 bg-primary"
-                    : isReady
+                    : ready
                       ? "w-2 bg-emerald-500"
                       : "w-2 bg-muted-foreground/30"
                 }`}
@@ -750,7 +726,6 @@ function BatchMode({ enrollments }) {
         </div>
       </div>
 
-      {/* ── Current student form ── */}
       <ReportForm
         enrollment={currentEnrollment}
         form={currentForm}
@@ -758,7 +733,6 @@ function BatchMode({ enrollments }) {
         error={errors[currentIdx]}
       />
 
-      {/* ── Navigation + Upload ── */}
       <div className="flex items-center justify-between gap-3 pb-6">
         <Button
           variant="outline"
@@ -806,10 +780,9 @@ function BatchMode({ enrollments }) {
 export default function FinalReportPage() {
   const location = useLocation();
 
-  const enrollment = location.state?.enrollment; // single mode
-  const enrollments = location.state?.enrollments; // batch mode
+  const enrollment = location.state?.enrollment;
+  const enrollments = location.state?.enrollments;
 
-  // ── Guard ──
   if (!enrollment && !enrollments?.length) {
     return <NoEnrollmentGuard />;
   }
