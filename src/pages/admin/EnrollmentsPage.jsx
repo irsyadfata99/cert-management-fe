@@ -34,7 +34,7 @@ import studentService from "@/services/studentService";
 import teacherService from "@/services/teacherService";
 import moduleService from "@/services/moduleService";
 import { formatDate } from "@/utils/formatDate";
-import { formatActiveStatus } from "@/utils/formatStatus";
+import { formatEnrollmentStatus } from "@/utils/formatStatus";
 import { toast } from "sonner";
 import useDebounce from "@/hooks/useDebounce";
 import usePagination from "@/hooks/usePagination";
@@ -50,7 +50,7 @@ function SearchableDropdown({
   displayKey = "name",
 }) {
   const [query, setQuery] = useState("");
-  const [options, setOptions] = useState(null); // null = loading, [] = empty
+  const [options, setOptions] = useState(null);
   const [open, setOpen] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
   const containerRef = useRef(null);
@@ -68,6 +68,7 @@ function SearchableDropdown({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOptions(null);
     fetchFn({
       search: debouncedQuery || undefined,
@@ -270,7 +271,7 @@ function EnrollmentFormDialog({ open, onOpenChange, modules, onSuccess }) {
   );
 }
 
-// ── Status Row (extracted to avoid creating component during render) ──
+// ── Status Row ───────────────────────────────────────────────
 function StatusRow({ label, complete, date }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-border last:border-0">
@@ -291,11 +292,12 @@ function StatusRow({ label, complete, date }) {
 
 // ── Pair Status Dialog ───────────────────────────────────────
 function PairStatusDialog({ open, onOpenChange, enrollmentId }) {
-  const [data, setData] = useState(undefined); // undefined = loading, null = error/empty
+  const [data, setData] = useState(undefined);
 
   useEffect(() => {
     if (!open || !enrollmentId) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setData(undefined);
     enrollmentService
       .getPairStatus(enrollmentId)
@@ -328,7 +330,6 @@ function PairStatusDialog({ open, onOpenChange, enrollmentId }) {
           </div>
         ) : data ? (
           <div className="space-y-4 py-2">
-            {/* Info */}
             <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 space-y-1">
               <p className="text-sm font-medium">{data.student_name}</p>
               <p className="text-xs text-muted-foreground">
@@ -336,7 +337,6 @@ function PairStatusDialog({ open, onOpenChange, enrollmentId }) {
               </p>
             </div>
 
-            {/* Status rows */}
             <div className="rounded-lg border border-border px-4">
               <StatusRow
                 label="Certificate Scan"
@@ -350,7 +350,6 @@ function PairStatusDialog({ open, onOpenChange, enrollmentId }) {
               />
             </div>
 
-            {/* Overall */}
             <div
               className={cn(
                 "flex items-center gap-2.5 rounded-lg px-4 py-3 border",
@@ -395,7 +394,7 @@ export default function EnrollmentsPage() {
   const [search, setSearch] = useState("");
   const { page, limit, goToPage, reset } = usePagination(10);
   const [sorting, setSorting] = useState({ key: "enrolled_at", order: "desc" });
-  const [statusFilter, setStatusFilter] = useState("true");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("all");
 
   const [formOpen, setFormOpen] = useState(false);
@@ -418,7 +417,7 @@ export default function EnrollmentsPage() {
         limit,
         sort_by: sorting.key,
         sort_order: sorting.order,
-        is_active: statusFilter !== "all" ? statusFilter : undefined,
+        enrollment_status: statusFilter !== "all" ? statusFilter : undefined,
         module_id: moduleFilter !== "all" ? moduleFilter : undefined,
       });
       setEnrollments(res.data ?? []);
@@ -491,9 +490,11 @@ export default function EnrollmentsPage() {
     },
     {
       header: "Status",
-      accessorKey: "is_active",
+      accessorKey: "enrollment_status",
       cell: ({ row }) => {
-        const { label, variant } = formatActiveStatus(row.original.is_active);
+        const { label, variant } = formatEnrollmentStatus(
+          row.original.enrollment_status,
+        );
         return <StatusBadge label={label} variant={variant} dot />;
       },
     },
@@ -577,13 +578,16 @@ export default function EnrollmentsPage() {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent position="popper">
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="true">Active</SelectItem>
-            <SelectItem value="false">Inactive</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="cert_printed">Cert Printed</SelectItem>
+            <SelectItem value="scan_uploaded">Scan Uploaded</SelectItem>
+            <SelectItem value="report_uploaded">Report Uploaded</SelectItem>
+            <SelectItem value="complete">Complete</SelectItem>
           </SelectContent>
         </Select>
         {total > 0 && (

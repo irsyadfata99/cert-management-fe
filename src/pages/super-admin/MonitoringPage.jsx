@@ -38,70 +38,13 @@ import Pagination from "@/components/common/Pagination";
 import monitoringService from "@/services/monitoringService";
 import centerService from "@/services/centerService";
 import { formatMonth } from "@/utils/formatDate";
+import {
+  exportUploadStatus,
+  exportActivity,
+  exportStockAlerts,
+} from "@/utils/exportXlsx";
 import { toast } from "sonner";
 import usePagination from "@/hooks/usePagination";
-
-// ── CSV Export Utility ────────────────────────────────────────
-function exportToCsv(filename, rows, columns) {
-  const header = columns.map((c) => c.label).join(",");
-  const body = rows
-    .map((row) =>
-      columns
-        .map((c) => {
-          const val = c.value(row) ?? "";
-          const str = String(val).replace(/"/g, '""');
-          return str.includes(",") || str.includes('"') || str.includes("\n")
-            ? `"${str}"`
-            : str;
-        })
-        .join(","),
-    )
-    .join("\n");
-  const blob = new Blob([`${header}\n${body}`], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ── CSV column definitions ────────────────────────────────────
-const UPLOAD_CSV_COLS = [
-  { label: "Teacher", value: (r) => r.teacher_name },
-  { label: "Email", value: (r) => r.teacher_email },
-  { label: "Center", value: (r) => r.center_name },
-  { label: "Student", value: (r) => r.student_name },
-  { label: "Module", value: (r) => r.module_name },
-  { label: "Status", value: (r) => r.upload_status },
-  { label: "Scan Uploaded At", value: (r) => r.scan_uploaded_at ?? "" },
-  { label: "Report Uploaded At", value: (r) => r.report_uploaded_at ?? "" },
-];
-
-const STOCK_CSV_COLS = [
-  { label: "Center", value: (r) => r.center_name },
-  { label: "Cert Quantity", value: (r) => r.cert_quantity },
-  { label: "Cert Threshold", value: (r) => r.cert_threshold },
-  { label: "Cert Low Stock", value: (r) => (r.cert_low_stock ? "Yes" : "No") },
-  { label: "Medal Quantity", value: (r) => r.medal_quantity },
-  { label: "Medal Threshold", value: (r) => r.medal_threshold },
-  {
-    label: "Medal Low Stock",
-    value: (r) => (r.medal_low_stock ? "Yes" : "No"),
-  },
-];
-
-const ACTIVITY_CSV_COLS = [
-  { label: "Center", value: (r) => r.center_name },
-  { label: "Month", value: (r) => r.month },
-  { label: "Cert Printed", value: (r) => r.cert_printed ?? 0 },
-  { label: "Cert Reprinted", value: (r) => r.cert_reprinted ?? 0 },
-  { label: "Cert Scan Uploaded", value: (r) => r.cert_scan_uploaded ?? 0 },
-  { label: "Medal Printed", value: (r) => r.medal_printed ?? 0 },
-  { label: "Total Issued", value: (r) => r.total_issued ?? 0 },
-];
 
 // ── Custom Tooltip ──────────────────────────────────────────
 function CustomTooltip({ active, payload, label }) {
@@ -425,12 +368,10 @@ export default function SuperAdminMonitoringPage() {
                 variant="outline"
                 size="sm"
                 disabled={activityData.length === 0}
-                onClick={() =>
-                  exportToCsv("activity.csv", activityData, ACTIVITY_CSV_COLS)
-                }
+                onClick={() => exportActivity(activityData)}
               >
                 <Download className="w-3.5 h-3.5 mr-1.5" />
-                Export CSV
+                Export
               </Button>
               <TrendingUp className="w-4 h-4 text-muted-foreground" />
             </div>
@@ -547,14 +488,11 @@ export default function SuperAdminMonitoringPage() {
                 variant="outline"
                 size="sm"
                 disabled={uploadData.length === 0}
-                onClick={() =>
-                  exportToCsv("upload-status.csv", uploadData, UPLOAD_CSV_COLS)
-                }
+                onClick={() => exportUploadStatus(uploadData)}
               >
                 <Download className="w-3.5 h-3.5 mr-1.5" />
-                Export CSV
+                Export
               </Button>
-              <Upload className="w-4 h-4 text-muted-foreground" />
             </div>
           </div>
         </CardHeader>
@@ -563,8 +501,8 @@ export default function SuperAdminMonitoringPage() {
             columns={uploadColumns}
             data={uploadData}
             loading={uploadLoading}
-            emptyTitle="No enrollments found"
-            emptyDescription="Try adjusting the filters."
+            emptyTitle="No upload data found"
+            emptyDescription="Try adjusting the status filter."
           />
         </CardContent>
         {totalPages > 1 && (
@@ -595,12 +533,10 @@ export default function SuperAdminMonitoringPage() {
                 variant="outline"
                 size="sm"
                 disabled={stockAlerts.length === 0}
-                onClick={() =>
-                  exportToCsv("stock-alerts.csv", stockAlerts, STOCK_CSV_COLS)
-                }
+                onClick={() => exportStockAlerts(stockAlerts)}
               >
                 <Download className="w-3.5 h-3.5 mr-1.5" />
-                Export CSV
+                Export
               </Button>
               <AlertTriangle className="w-4 h-4 text-destructive" />
             </div>

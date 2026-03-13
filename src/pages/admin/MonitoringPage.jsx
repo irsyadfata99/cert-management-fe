@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   AlertTriangle,
-  CheckCircle2,
-  Clock,
   Upload,
   BarChart3,
   Package,
@@ -22,6 +20,11 @@ import DataTable from "@/components/common/DataTable";
 import Pagination from "@/components/common/Pagination";
 import api from "@/services/api";
 import { formatDate } from "@/utils/formatDate";
+import {
+  exportUploadStatus,
+  exportActivity,
+  exportStockAlerts,
+} from "@/utils/exportXlsx";
 import { toast } from "sonner";
 import usePagination from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
@@ -36,67 +39,6 @@ const monitoringService = {
     api.get("/admin/monitoring/stock-alerts").then((r) => r.data),
 };
 
-// ── CSV Export Utility ────────────────────────────────────────
-function exportToCsv(filename, rows, columns) {
-  const header = columns.map((c) => c.label).join(",");
-  const body = rows
-    .map((row) =>
-      columns
-        .map((c) => {
-          const val = c.value(row) ?? "";
-          const str = String(val).replace(/"/g, '""');
-          return str.includes(",") || str.includes('"') || str.includes("\n")
-            ? `"${str}"`
-            : str;
-        })
-        .join(","),
-    )
-    .join("\n");
-  const blob = new Blob([`${header}\n${body}`], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-const UPLOAD_CSV_COLS = [
-  { label: "Teacher", value: (r) => r.teacher_name },
-  { label: "Email", value: (r) => r.teacher_email },
-  { label: "Center", value: (r) => r.center_name },
-  { label: "Student", value: (r) => r.student_name },
-  { label: "Module", value: (r) => r.module_name },
-  { label: "Status", value: (r) => r.upload_status },
-  { label: "Scan Uploaded At", value: (r) => r.scan_uploaded_at ?? "" },
-  { label: "Report Uploaded At", value: (r) => r.report_uploaded_at ?? "" },
-];
-
-const ACTIVITY_CSV_COLS = [
-  { label: "Center", value: (r) => r.center_name },
-  { label: "Month", value: (r) => r.month },
-  { label: "Cert Printed", value: (r) => r.cert_printed ?? 0 },
-  { label: "Cert Reprinted", value: (r) => r.cert_reprinted ?? 0 },
-  { label: "Cert Scan Uploaded", value: (r) => r.cert_scan_uploaded ?? 0 },
-  { label: "Medal Printed", value: (r) => r.medal_printed ?? 0 },
-  { label: "Total Issued", value: (r) => r.total_issued ?? 0 },
-];
-
-const STOCK_CSV_COLS = [
-  { label: "Center", value: (r) => r.center_name },
-  { label: "Cert Quantity", value: (r) => r.cert_quantity },
-  { label: "Cert Threshold", value: (r) => r.cert_threshold },
-  { label: "Cert Low Stock", value: (r) => (r.cert_low_stock ? "Yes" : "No") },
-  { label: "Medal Quantity", value: (r) => r.medal_quantity },
-  { label: "Medal Threshold", value: (r) => r.medal_threshold },
-  {
-    label: "Medal Low Stock",
-    value: (r) => (r.medal_low_stock ? "Yes" : "No"),
-  },
-];
-
 // ── Upload Status badge helper ────────────────────────────────
 const UPLOAD_STATUS_MAP = {
   not_started: { label: "Not Started", variant: "outline" },
@@ -107,11 +49,11 @@ const UPLOAD_STATUS_MAP = {
 };
 
 // ── Section Header ────────────────────────────────────────────
-function SectionHeader({ icon: Icon, title, description }) {
+function SectionHeader({ icon: IconComponent, title, description }) {
   return (
     <div className="flex items-center gap-3 mb-4">
       <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-        <Icon className="w-4 h-4 text-primary" />
+        <IconComponent className="w-4 h-4 text-primary" />
       </div>
       <div>
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -210,7 +152,6 @@ export default function AdminMonitoringPage() {
     page: actPage,
     limit: actLimit,
     goToPage: goToActPage,
-    reset: resetAct,
   } = usePagination(10);
 
   // ── Stock Alerts ──
@@ -463,12 +404,10 @@ export default function AdminMonitoringPage() {
               variant="outline"
               size="sm"
               disabled={stockData.length === 0}
-              onClick={() =>
-                exportToCsv("stock-alerts.csv", stockData, STOCK_CSV_COLS)
-              }
+              onClick={() => exportStockAlerts(stockData)}
             >
               <Download className="w-3.5 h-3.5 mr-1.5" />
-              Export CSV
+              Export
             </Button>
           </div>
         </div>
@@ -528,12 +467,10 @@ export default function AdminMonitoringPage() {
             variant="outline"
             size="sm"
             disabled={uploadData.length === 0}
-            onClick={() =>
-              exportToCsv("upload-status.csv", uploadData, UPLOAD_CSV_COLS)
-            }
+            onClick={() => exportUploadStatus(uploadData)}
           >
             <Download className="w-3.5 h-3.5 mr-1.5" />
-            Export CSV
+            Export
           </Button>
         </div>
         <DataTable
@@ -564,16 +501,10 @@ export default function AdminMonitoringPage() {
             variant="outline"
             size="sm"
             disabled={activityData.length === 0}
-            onClick={() =>
-              exportToCsv(
-                "monthly-activity.csv",
-                activityData,
-                ACTIVITY_CSV_COLS,
-              )
-            }
+            onClick={() => exportActivity(activityData)}
           >
             <Download className="w-3.5 h-3.5 mr-1.5" />
-            Export CSV
+            Export
           </Button>
         </div>
         <DataTable

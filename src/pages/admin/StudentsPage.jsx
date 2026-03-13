@@ -64,13 +64,13 @@ function StudentFormDialog({
     try {
       if (isEdit) {
         await studentService.update(student.id, {
-          name: name.trim(),
+          name: name.trim().toUpperCase(),
           center_id: Number(centerId),
         });
         toast.success("Student updated");
       } else {
         await studentService.create({
-          name: name.trim(),
+          name: name.trim().toUpperCase(),
           center_id: Number(centerId),
         });
         toast.success("Student created");
@@ -97,10 +97,11 @@ function StudentFormDialog({
             </Label>
             <Input
               id="student-name"
-              placeholder="e.g. Andi Pratama"
+              placeholder="e.g. ANDI PRATAMA"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              style={{ textTransform: "uppercase" }}
             />
           </div>
           <div className="space-y-1.5">

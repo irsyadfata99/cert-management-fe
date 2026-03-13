@@ -13,18 +13,37 @@ import {
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import api from "@/services/api";
+import { toast } from "sonner";
 
 // ─── Print Helper ────────────────────────────────────────────
 const printReport = async (reportId) => {
+  // Open window BEFORE await — must be synchronous from user gesture
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    toast.error("Popup blocked. Allow popups and try again.");
+    return;
+  }
+  printWindow.document.write(
+    `<html><body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#888">
+      <p>Preparing report for print...</p>
+    </body></html>`,
+  );
+
   try {
     const res = await api.get(`/drive/reports/${reportId}/download`, {
       responseType: "arraybuffer",
     });
     const blob = new Blob([res.data], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, "_blank");
-    if (!printWindow) return;
+    printWindow.location.href = url;
     printWindow.onload = () => {
       printWindow.focus();
       printWindow.print();
@@ -35,6 +54,7 @@ const printReport = async (reportId) => {
     };
   } catch {
     // Non-blocking — silently fail, user can print manually from Drive
+    printWindow.close();
   }
 };
 
@@ -65,11 +85,33 @@ const SCORE_BAR_WIDTH = {
   "": "0%",
 };
 
-const MIN_WORD_COUNT = 200;
+const MIN_WORD_COUNT = 120;
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const YEARS = (() => {
+  const current = new Date().getFullYear();
+  return Array.from({ length: 20 }, (_, i) => current + i);
+})();
 
 const EMPTY_FORM = {
-  academic_year: "",
-  period: "",
+  year_start: "",
+  year_end: "",
+  period_start: "",
+  period_end: "",
   score_creativity: "",
   score_critical_thinking: "",
   score_attention: "",
@@ -83,12 +125,12 @@ const countWords = (text) =>
   text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
 
 // ─── Sub-components ──────────────────────────────────────────
-function SectionCard({ icon: Icon, title, children }) {
+function SectionCard({ icon: IconComponent, title, children }) {
   return (
     <div className="glass-card p-5 space-y-4">
       <div className="flex items-center gap-2.5">
         <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-          <Icon className="w-3.5 h-3.5 text-primary" />
+          <IconComponent className="w-3.5 h-3.5 text-primary" />
         </div>
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
@@ -159,29 +201,128 @@ function ReportForm({ enrollment, form, setForm, error }) {
       {/* ── Period ── */}
       <SectionCard icon={CalendarDays} title="Learning Period">
         <div className="grid grid-cols-2 gap-4">
+          {/* Academic Year */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
               Academic Year
             </label>
-            <input
-              type="text"
-              value={form.academic_year}
-              onChange={set("academic_year")}
-              placeholder="e.g. 2024/2025"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
-            />
+            <div className="flex items-center gap-2">
+              <Select
+                value={form.year_start}
+                onValueChange={(val) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    year_start: val,
+                    // reset end if it's now before start
+                    year_end:
+                      prev.year_end && Number(prev.year_end) < Number(val)
+                        ? ""
+                        : prev.year_end,
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Start" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {YEARS.map((y) => (
+                    <SelectItem key={y} value={String(y)}>
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground shrink-0">/</span>
+              <Select
+                value={form.year_end}
+                onValueChange={(val) =>
+                  setForm((prev) => ({ ...prev, year_end: val }))
+                }
+                disabled={!form.year_start}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="End" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {YEARS.filter(
+                    (y) => !form.year_start || y >= Number(form.year_start),
+                  ).map((y) => (
+                    <SelectItem key={y} value={String(y)}>
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {form.year_start && form.year_end && (
+              <p className="text-xs text-muted-foreground">
+                {form.year_start}/{form.year_end}
+              </p>
+            )}
           </div>
+
+          {/* Period */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
               Period
             </label>
-            <input
-              type="text"
-              value={form.period}
-              onChange={set("period")}
-              placeholder="e.g. Semester 1"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
-            />
+            <div className="flex items-center gap-2">
+              <Select
+                value={form.period_start}
+                onValueChange={(val) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    period_start: val,
+                    period_end:
+                      prev.period_end &&
+                      MONTHS.indexOf(prev.period_end) < MONTHS.indexOf(val)
+                        ? ""
+                        : prev.period_end,
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Start" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {MONTHS.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground shrink-0">–</span>
+              <Select
+                value={form.period_end}
+                onValueChange={(val) =>
+                  setForm((prev) => ({ ...prev, period_end: val }))
+                }
+                disabled={!form.period_start}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="End" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {MONTHS.filter(
+                    (m) =>
+                      !form.period_start ||
+                      MONTHS.indexOf(m) >= MONTHS.indexOf(form.period_start),
+                  ).map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {form.period_start && form.period_end && (
+              <p className="text-xs text-muted-foreground">
+                {form.period_start === form.period_end
+                  ? form.period_start
+                  : `${form.period_start} – ${form.period_end}`}
+              </p>
+            )}
           </div>
         </div>
       </SectionCard>
@@ -273,8 +414,10 @@ function SingleMode({ enrollment }) {
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
   const allScoresFilled = SKILLS.every((s) => form[s.key] !== "");
   const isFormValid =
-    form.academic_year.trim() &&
-    form.period.trim() &&
+    form.year_start &&
+    form.year_end &&
+    form.period_start &&
+    form.period_end &&
     allScoresFilled &&
     wordCountOk;
 
@@ -285,8 +428,11 @@ function SingleMode({ enrollment }) {
     try {
       const res = await api.post("/teacher/reports", {
         enrollment_id: enrollment.enrollment_id,
-        academic_year: form.academic_year.trim(),
-        period: form.period.trim(),
+        academic_year: `${form.year_start}/${form.year_end}`,
+        period:
+          form.period_start === form.period_end
+            ? form.period_start
+            : `${form.period_start} - ${form.period_end}`,
         score_creativity: form.score_creativity,
         score_critical_thinking: form.score_critical_thinking,
         score_attention: form.score_attention,
@@ -395,7 +541,7 @@ function BatchMode({ enrollments }) {
     enrollments.map(() => ({ ...EMPTY_FORM })),
   );
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [errors, setErrors] = useState(() => enrollments.map(() => null));
+  const [errors] = useState(() => enrollments.map(() => null));
 
   // Upload state
   const [uploading, setUploading] = useState(false);
@@ -422,15 +568,19 @@ function BatchMode({ enrollments }) {
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
   const allScoresFilled = SKILLS.every((s) => currentForm[s.key] !== "");
   const currentFormValid =
-    currentForm.academic_year.trim() &&
-    currentForm.period.trim() &&
+    currentForm.year_start &&
+    currentForm.year_end &&
+    currentForm.period_start &&
+    currentForm.period_end &&
     allScoresFilled &&
     wordCountOk;
 
   const allFormsValid = forms.every(
     (f) =>
-      f.academic_year.trim() &&
-      f.period.trim() &&
+      f.year_start &&
+      f.year_end &&
+      f.period_start &&
+      f.period_end &&
       SKILLS.every((s) => f[s.key] !== "") &&
       countWords(f.content) >= MIN_WORD_COUNT,
   );
@@ -445,8 +595,11 @@ function BatchMode({ enrollments }) {
       try {
         const res = await api.post("/teacher/reports", {
           enrollment_id: enrollment.enrollment_id,
-          academic_year: form.academic_year.trim(),
-          period: form.period.trim(),
+          academic_year: `${form.year_start}/${form.year_end}`,
+          period:
+            form.period_start === form.period_end
+              ? form.period_start
+              : `${form.period_start} - ${form.period_end}`,
           score_creativity: form.score_creativity,
           score_critical_thinking: form.score_critical_thinking,
           score_attention: form.score_attention,
@@ -473,7 +626,6 @@ function BatchMode({ enrollments }) {
 
   // ── Upload Results Screen ──
   if (uploadResults) {
-    const allSuccess = uploadResults.every((r) => r.success);
     return (
       <div className="max-w-2xl mx-auto space-y-6">
         <PageHeader
@@ -553,11 +705,12 @@ function BatchMode({ enrollments }) {
           </span>
           <span>
             {
-              forms.filter((f, i) => {
-                const e = enrollments[i];
+              forms.filter((f) => {
                 return (
-                  f.academic_year.trim() &&
-                  f.period.trim() &&
+                  f.year_start &&
+                  f.year_end &&
+                  f.period_start &&
+                  f.period_end &&
                   SKILLS.every((s) => f[s.key] !== "") &&
                   countWords(f.content) >= MIN_WORD_COUNT
                 );
@@ -572,8 +725,10 @@ function BatchMode({ enrollments }) {
           {enrollments.map((e, i) => {
             const f = forms[i];
             const isReady =
-              f.academic_year.trim() &&
-              f.period.trim() &&
+              f.year_start &&
+              f.year_end &&
+              f.period_start &&
+              f.period_end &&
               SKILLS.every((s) => f[s.key] !== "") &&
               countWords(f.content) >= MIN_WORD_COUNT;
             return (

@@ -51,14 +51,14 @@ function ModuleFormDialog({ open, onOpenChange, module, onSuccess }) {
     try {
       if (isEdit) {
         await moduleService.update(module.id, {
-          name: name.trim(),
+          name: name.trim().toUpperCase(),
           description: description.trim() || null,
         });
         onOpenChange(false);
         toast.success("Module updated");
       } else {
         await moduleService.create({
-          name: name.trim(),
+          name: name.trim().toUpperCase(),
           description: description.trim() || undefined,
         });
         onOpenChange(false);
@@ -85,10 +85,11 @@ function ModuleFormDialog({ open, onOpenChange, module, onSuccess }) {
             </Label>
             <Input
               id="module-name"
-              placeholder="e.g. Scratch Beginner"
+              placeholder="e.g. SCRATCH BEGINNER"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              style={{ textTransform: "uppercase" }}
             />
           </div>
           <div className="space-y-1.5">
