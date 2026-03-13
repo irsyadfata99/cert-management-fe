@@ -18,16 +18,6 @@ const teacherActionService = {
   reprintCert: (data) =>
     api.post("/teacher/certificates/reprint", data).then((r) => r.data),
 
-  // ── Medals ──
-  getMedals: (params) =>
-    api.get("/teacher/medals", { params }).then((r) => r.data),
-
-  printMedal: (data) =>
-    api.post("/teacher/medals/print", data).then((r) => r.data),
-
-  printMedalBatch: (data) =>
-    api.post("/teacher/medals/print/batch", data).then((r) => r.data),
-
   // ── Reports ──
   getReports: (params) =>
     api.get("/teacher/reports", { params }).then((r) => r.data),

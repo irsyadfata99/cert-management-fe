@@ -1,8 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
-import { RefreshCw, BookOpen, Award, Medal, AlertTriangle } from "lucide-react";
+import {
+  RefreshCw,
+  BookOpen,
+  Award,
+  FileText,
+  AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   AreaChart,
   Area,
@@ -18,6 +23,7 @@ import StatusBadge from "@/components/common/StatusBadge";
 import { formatDate } from "@/utils/formatDate";
 import { formatEnrollmentStatus } from "@/utils/formatStatus";
 import teacherActionService from "@/services/teacherActionService";
+import teacherService from "@/services/teacherService";
 import driveService from "@/services/driveService";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
@@ -57,7 +63,6 @@ function SummaryCard({ title, value, icon: Icon, loading, sub, warning }) {
 
 // ── Stock Card ───────────────────────────────────────────────
 function StockCard({ stock, loading }) {
-  // stock bisa object (1 center) atau array (multi center)
   const stocks = stock ? (Array.isArray(stock) ? stock : [stock]) : [];
 
   return (
@@ -189,19 +194,21 @@ export default function TeacherDashboardPage() {
   const [enrollments, setEnrollments] = useState([]);
   const [activity, setActivity] = useState([]);
   const [stock, setStock] = useState(null);
-  const [total, setTotal] = useState({ enrollments: 0, certs: 0, medals: 0 });
+  const [total, setTotal] = useState({ enrollments: 0, certs: 0, reports: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+
     try {
-      const [enrollRes, certsRes, medalsRes, stockRes] =
+      const [enrollRes, certsRes, reportsRes, activityRes, stockRes] =
         await Promise.allSettled([
           teacherActionService.getEnrollments({ page: 1, limit: 5 }),
           teacherActionService.getCertificates({ page: 1, limit: 1 }),
-          teacherActionService.getMedals({ page: 1, limit: 1 }),
+          teacherActionService.getReports({ page: 1, limit: 1 }),
+          teacherService.getActivity(),
           driveService.getTeacherStock(),
         ]);
 
@@ -218,11 +225,14 @@ export default function TeacherDashboardPage() {
           certs: certsRes.value.pagination?.total ?? 0,
         }));
       }
-      if (medalsRes.status === "fulfilled") {
+      if (reportsRes.status === "fulfilled") {
         setTotal((t) => ({
           ...t,
-          medals: medalsRes.value.pagination?.total ?? 0,
+          reports: reportsRes.value.pagination?.total ?? 0,
         }));
+      }
+      if (activityRes.status === "fulfilled") {
+        setActivity(activityRes.value.data ?? []);
       }
       if (stockRes.status === "fulfilled") {
         setStock(stockRes.value.data);
@@ -235,7 +245,6 @@ export default function TeacherDashboardPage() {
     }
   }, []);
 
-  // Activity tidak ada endpoint khusus untuk teacher — skip atau derive dari enrollments
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
@@ -278,9 +287,9 @@ export default function TeacherDashboardPage() {
           loading={loading}
         />
         <SummaryCard
-          title="Medals Printed"
-          value={total.medals}
-          icon={Medal}
+          title="Reports Created"
+          value={total.reports}
+          icon={FileText}
           loading={loading}
         />
         <StockCard stock={stock} loading={loading} />

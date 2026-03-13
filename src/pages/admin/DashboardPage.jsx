@@ -78,6 +78,87 @@ function SummaryCard({
   );
 }
 
+// ── Stock Card (per center) ─────────────────────────────────
+function StockCard({ s, delay }) {
+  const hasAlert = s.cert_low_stock || s.medal_low_stock;
+
+  return (
+    <Card
+      className="glass-card border-0 animate-fade-in-up"
+      style={{ animationDelay: delay }}
+    >
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">
+            {s.center_name}
+          </CardTitle>
+          {hasAlert && (
+            <Badge variant="destructive" className="text-xs gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Low Stock
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-4">
+        {/* Cert Stock */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5">
+            <Award
+              className="w-4 h-4"
+              style={{
+                color: s.cert_low_stock ? "hsl(0,84%,60%)" : "hsl(144,79%,50%)",
+              }}
+            />
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Cert Stock
+            </p>
+          </div>
+          <p className="text-3xl font-bold text-foreground">
+            {s.cert_quantity}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Threshold: {s.cert_threshold}
+          </p>
+          {s.cert_low_stock && (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Low stock
+            </p>
+          )}
+        </div>
+
+        {/* Medal Stock */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5">
+            <Award
+              className="w-4 h-4"
+              style={{
+                color: s.medal_low_stock ? "hsl(0,84%,60%)" : "hsl(38,92%,60%)",
+              }}
+            />
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Medal Stock
+            </p>
+          </div>
+          <p className="text-3xl font-bold text-foreground">
+            {s.medal_quantity}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Threshold: {s.medal_threshold}
+          </p>
+          {s.medal_low_stock && (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Low stock
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Custom Chart Tooltip ────────────────────────────────────
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -450,105 +531,30 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stock Info */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {loading
-          ? [1, 2].map((i) => <CardSkeleton key={i} />)
-          : stockList.length === 0
-            ? null
-            : stockList.map((s) => (
-                <div key={s.center_id} className="grid grid-cols-2 gap-4">
-                  {/* Cert Stock */}
-                  <Card
-                    className="glass-card border-0 animate-fade-in-up"
-                    style={{ animationDelay: "300ms" }}
-                  >
-                    <CardContent className="p-5">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            Cert Stock
-                          </p>
-                          <p className="text-3xl font-bold text-foreground mt-1">
-                            {s.cert_quantity}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Threshold: {s.cert_threshold}
-                          </p>
-                        </div>
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                          style={{
-                            background: s.cert_low_stock
-                              ? "hsl(0,84%,60%,0.12)"
-                              : "hsl(144,79%,50%,0.12)",
-                          }}
-                        >
-                          <Award
-                            className="w-5 h-5"
-                            style={{
-                              color: s.cert_low_stock
-                                ? "hsl(0,84%,60%)"
-                                : "hsl(144,79%,50%)",
-                            }}
-                          />
-                        </div>
-                      </div>
-                      {s.cert_low_stock && (
-                        <div className="mt-3 flex items-center gap-1.5 text-xs text-destructive">
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          Low stock — please restock soon
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Medal Stock */}
-                  <Card
-                    className="glass-card border-0 animate-fade-in-up"
-                    style={{ animationDelay: "350ms" }}
-                  >
-                    <CardContent className="p-5">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            Medal Stock
-                          </p>
-                          <p className="text-3xl font-bold text-foreground mt-1">
-                            {s.medal_quantity}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Threshold: {s.medal_threshold}
-                          </p>
-                        </div>
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                          style={{
-                            background: s.medal_low_stock
-                              ? "hsl(0,84%,60%,0.12)"
-                              : "hsl(38,92%,60%,0.12)",
-                          }}
-                        >
-                          <Award
-                            className="w-5 h-5"
-                            style={{
-                              color: s.medal_low_stock
-                                ? "hsl(0,84%,60%)"
-                                : "hsl(38,92%,60%)",
-                            }}
-                          />
-                        </div>
-                      </div>
-                      {s.medal_low_stock && (
-                        <div className="mt-3 flex items-center gap-1.5 text-xs text-destructive">
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          Low stock — please restock soon
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[1, 2].map((i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        stockList.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-sm font-semibold text-foreground">
+              Stock Overview
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {stockList.map((s, idx) => (
+                <StockCard
+                  key={s.center_id}
+                  s={s}
+                  delay={`${300 + idx * 50}ms`}
+                />
               ))}
-      </div>
+            </div>
+          </div>
+        )
+      )}
     </div>
   );
 }
