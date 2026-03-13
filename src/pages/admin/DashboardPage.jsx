@@ -39,7 +39,6 @@ import driveService from "@/services/driveService";
 import { formatMonth } from "@/utils/formatDate";
 import { toast } from "sonner";
 
-// ── Summary Card ────────────────────────────────────────────
 function SummaryCard({
   icon: Icon,
   label,
@@ -78,10 +77,8 @@ function SummaryCard({
   );
 }
 
-// ── Stock Card (per center) ─────────────────────────────────
 function StockCard({ s, delay }) {
   const hasAlert = s.cert_low_stock || s.medal_low_stock;
-
   return (
     <Card
       className="glass-card border-0 animate-fade-in-up"
@@ -101,7 +98,6 @@ function StockCard({ s, delay }) {
         </div>
       </CardHeader>
       <CardContent className="grid grid-cols-2 gap-4">
-        {/* Cert Stock */}
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
             <Award
@@ -122,13 +118,10 @@ function StockCard({ s, delay }) {
           </p>
           {s.cert_low_stock && (
             <p className="text-xs text-destructive flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" />
-              Low stock
+              <AlertTriangle className="w-3 h-3" /> Low stock
             </p>
           )}
         </div>
-
-        {/* Medal Stock */}
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
             <Award
@@ -149,8 +142,7 @@ function StockCard({ s, delay }) {
           </p>
           {s.medal_low_stock && (
             <p className="text-xs text-destructive flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" />
-              Low stock
+              <AlertTriangle className="w-3 h-3" /> Low stock
             </p>
           )}
         </div>
@@ -159,7 +151,6 @@ function StockCard({ s, delay }) {
   );
 }
 
-// ── Custom Chart Tooltip ────────────────────────────────────
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
@@ -179,7 +170,6 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-// ── Main Page ───────────────────────────────────────────────
 export default function AdminDashboard() {
   const [counts, setCounts] = useState({
     students: 0,
@@ -225,7 +215,6 @@ export default function AdminDashboard() {
       setActivity(activityRes.data ?? []);
       setUploadStatus(uploadRes.data ?? []);
       setStock(stockRes.data ?? null);
-
       if (isRefresh) toast.success("Dashboard refreshed");
     } catch {
       toast.error("Failed to load dashboard data");
@@ -239,7 +228,6 @@ export default function AdminDashboard() {
     fetchAll();
   }, []);
 
-  // Chart data
   const chartData = useMemo(() => {
     const grouped = {};
     for (const row of activity) {
@@ -248,17 +236,16 @@ export default function AdminDashboard() {
         grouped[month] = {
           month,
           cert_printed: 0,
+          cert_reprinted: 0,
           medal_issued: 0,
-          cert_scan_uploaded: 0,
         };
       grouped[month].cert_printed += Number(row.cert_printed ?? 0);
-      grouped[month].medal_issued += Number(row.medal_printed ?? 0); // ✅ FIX
-      grouped[month].cert_scan_uploaded += Number(row.cert_scan_uploaded ?? 0);
+      grouped[month].cert_reprinted += Number(row.cert_reprinted ?? 0);
+      grouped[month].medal_issued += Number(row.medal_printed ?? 0);
     }
     return Object.values(grouped).slice(0, 6).reverse();
   }, [activity]);
 
-  // Upload summary
   const uploadSummary = useMemo(
     () => ({
       complete: uploadStatus.filter((u) => u.upload_status === "complete")
@@ -276,7 +263,6 @@ export default function AdminDashboard() {
     [uploadStatus],
   );
 
-  // Stock — handle both single object and array
   const stockList = useMemo(() => {
     if (!stock) return [];
     return Array.isArray(stock) ? stock : [stock];
@@ -302,7 +288,6 @@ export default function AdminDashboard() {
         }
       />
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
           icon={GraduationCap}
@@ -342,9 +327,7 @@ export default function AdminDashboard() {
         />
       </div>
 
-      {/* Chart + Upload Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Activity Chart */}
         <Card
           className="glass-card border-0 lg:col-span-2 animate-fade-in-up"
           style={{ animationDelay: "200ms" }}
@@ -385,6 +368,24 @@ export default function AdminDashboard() {
                       <stop
                         offset="95%"
                         stopColor="hsl(219,79%,66%)"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                    <linearGradient
+                      id="reprintGrad"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="5%"
+                        stopColor="hsl(280,79%,66%)"
+                        stopOpacity={0.3}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="hsl(280,79%,66%)"
                         stopOpacity={0}
                       />
                     </linearGradient>
@@ -430,6 +431,14 @@ export default function AdminDashboard() {
                   />
                   <Area
                     type="monotone"
+                    dataKey="cert_reprinted"
+                    name="Cert Reprint"
+                    stroke="hsl(280,79%,66%)"
+                    fill="url(#reprintGrad)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
                     dataKey="medal_issued"
                     name="Medal Issued"
                     stroke="hsl(144,79%,50%)"
@@ -442,7 +451,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Upload Summary */}
         <Card
           className="glass-card border-0 animate-fade-in-up"
           style={{ animationDelay: "250ms" }}
@@ -530,7 +538,6 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Stock Info */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[1, 2].map((i) => (
