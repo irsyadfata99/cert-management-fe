@@ -57,8 +57,6 @@ const formatDate = (val) => {
   });
 };
 
-// [FIX #3] limit per fetch — cukup untuk kebanyakan teacher,
-// tidak terlalu berat di server
 const FETCH_LIMIT = 100;
 const PAGE_SIZE = 15;
 
@@ -215,19 +213,21 @@ const normalizeCertificates = (data) =>
     _raw: c,
   }));
 
+// Medals are now fetched separately from the medals API endpoint so the
+// data reflects what is actually in the medals table, not a derivation
+// from the certificates table (which previously included medals even when
+// the medal was never printed due to a stock error).
 const normalizeMedals = (data) =>
-  data
-    .filter((c) => !c.is_reprint)
-    .map((c) => ({
-      id: `medal-${c.id}`,
-      type: "medal",
-      student_name: c.student_name,
-      module_name: c.module_name,
-      detail: `Bundled with cert ${c.cert_unique_id}`,
-      status: "issued",
-      date: c.printed_at,
-      _raw: c,
-    }));
+  data.map((m) => ({
+    id: `medal-${m.id}`,
+    type: "medal",
+    student_name: m.student_name,
+    module_name: m.module_name,
+    detail: m.medal_unique_id,
+    status: "issued",
+    date: m.printed_at,
+    _raw: m,
+  }));
 
 const normalizeReports = (data) =>
   data.map((r) => ({
@@ -274,7 +274,6 @@ export default function HistoryPage() {
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // [FIX #3] track apakah data mungkin terpotong
   const [dataTruncated, setDataTruncated] = useState(false);
 
   const [search, setSearch] = useState("");
@@ -294,30 +293,36 @@ export default function HistoryPage() {
     else setLoading(true);
 
     try {
-      const [enrollRes, certRes, reportRes] = await Promise.all([
+      // Fetch medals directly from the teacher medals endpoint so the data
+      // matches the actual medals table (not derived from certificates).
+      const [enrollRes, certRes, reportRes, medalRes] = await Promise.all([
         teacherActionService.getEnrollments({ limit: FETCH_LIMIT }),
         teacherActionService.getCertificates({ limit: FETCH_LIMIT }),
         teacherActionService.getReports({ limit: FETCH_LIMIT }),
+        teacherActionService.getMedals({ limit: FETCH_LIMIT }),
       ]);
 
       const enrollData = enrollRes.data ?? [];
       const certData = certRes.data ?? [];
       const reportData = reportRes.data ?? [];
+      const medalData = medalRes.data ?? [];
 
-      // [FIX #3] deteksi jika salah satu fetch mencapai limit
       const enrollTotal = enrollRes.pagination?.total ?? 0;
       const certTotal = certRes.pagination?.total ?? 0;
       const reportTotal = reportRes.pagination?.total ?? 0;
+      const medalTotal = medalRes.pagination?.total ?? 0;
+
       const isTruncated =
         enrollTotal > FETCH_LIMIT ||
         certTotal > FETCH_LIMIT ||
-        reportTotal > FETCH_LIMIT;
+        reportTotal > FETCH_LIMIT ||
+        medalTotal > FETCH_LIMIT;
       setDataTruncated(isTruncated);
 
       const rows = [
         ...normalizeEnrollments(enrollData),
         ...normalizeCertificates(certData),
-        ...normalizeMedals(certData),
+        ...normalizeMedals(medalData),
         ...normalizeReports(reportData),
       ];
 
@@ -434,7 +439,6 @@ export default function HistoryPage() {
         }
       />
 
-      {/* [FIX #3] warning jika data terpotong */}
       {dataTruncated && !loading && (
         <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-sm text-amber-600 dark:text-amber-400">
           <AlertTriangle className="w-4 h-4 shrink-0" />

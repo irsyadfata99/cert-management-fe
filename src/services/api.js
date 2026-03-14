@@ -27,14 +27,19 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const currentPath = window.location.pathname;
 
-    // 401 — session habis / tidak login
+    // 401 — session expired / not logged in
     if (status === 401 && currentPath !== "/login") {
+      // Clear Zustand persisted auth state before redirecting so stale
+      // user data is not shown on the next page load.
+      try {
+        localStorage.removeItem("auth-storage");
+      } catch (_) {
+        // localStorage may not be available in all environments
+      }
       window.location.href = "/login";
     }
 
-    // 403 — tidak punya akses, biarkan komponen handle error-nya
-    // (tidak redirect karena /forbidden tidak terdaftar di router)
-
+    // 403 — insufficient permissions, let the component handle it
     return Promise.reject(error);
   },
 );

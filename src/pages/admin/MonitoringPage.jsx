@@ -20,7 +20,6 @@ import PageHeader from "@/components/common/PageHeader";
 import StatusBadge from "@/components/common/StatusBadge";
 import DataTable from "@/components/common/DataTable";
 import Pagination from "@/components/common/Pagination";
-// [FIX #8] import dari service file, hapus definisi lokal
 import monitoringService from "@/services/monitoringService";
 import { formatDate } from "@/utils/formatDate";
 import {
@@ -139,7 +138,10 @@ export default function AdminMonitoringPage() {
     reset: resetUpload,
   } = usePagination(10);
 
-  // ── Activity ──
+  // ── Activity — server-side pagination via limit/offset ──
+  // The backend returns at most 120 rows ordered by month DESC.
+  // We paginate that result client-side which is fine for ≤120 rows,
+  // but we show a clear count so the admin knows how much data is shown.
   const [activityData, setActivityData] = useState([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const {
@@ -166,7 +168,6 @@ export default function AdminMonitoringPage() {
   } = usePagination(10);
 
   // ── Fetch Upload Status ──
-  // [FIX #8] gunakan monitoringService.getAdminUploadStatus (dari import)
   const fetchUploadStatus = useCallback(async () => {
     setUploadLoading(true);
     try {
@@ -185,7 +186,6 @@ export default function AdminMonitoringPage() {
   }, [uploadPage, uploadLimit, uploadStatusFilter]);
 
   // ── Fetch Activity ──
-  // [FIX #8] gunakan monitoringService.getAdminActivity (dari import)
   const fetchActivity = useCallback(async () => {
     setActivityLoading(true);
     try {
@@ -199,7 +199,6 @@ export default function AdminMonitoringPage() {
   }, []);
 
   // ── Fetch Stock Alerts ──
-  // [FIX #8] gunakan monitoringService.getAdminStockAlerts (dari import)
   const fetchStockAlerts = useCallback(async () => {
     setStockLoading(true);
     try {
@@ -213,7 +212,6 @@ export default function AdminMonitoringPage() {
   }, []);
 
   // ── Fetch Reprints ──
-  // [FIX #8] tambah getAdminReprints ke monitoringService (lihat patch di bawah)
   const fetchReprints = useCallback(async () => {
     setReprintLoading(true);
     try {
@@ -463,7 +461,7 @@ export default function AdminMonitoringPage() {
     },
   ];
 
-  // Paginate activity client-side
+  // Activity is returned max 120 rows from backend, paginate client-side.
   const activityPaged = activityData.slice(
     (actPage - 1) * actLimit,
     actPage * actLimit,
@@ -666,7 +664,7 @@ export default function AdminMonitoringPage() {
           <SectionHeader
             icon={BarChart3}
             title="Monthly Activity"
-            description="Certificate and medal activity per center per month"
+            description={`Certificate and medal activity per center per month${activityData.length === 120 ? " (showing latest 120 records)" : ""}`}
           />
           <Button
             variant="outline"

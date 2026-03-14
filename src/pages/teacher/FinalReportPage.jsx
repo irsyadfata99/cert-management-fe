@@ -400,7 +400,6 @@ function StudentReportForm({ enrollment, form, setForm, error }) {
         </div>
       </SectionCard>
 
-      {/* [FIX #5] error sekarang tampil karena errors array punya setter */}
       {error && (
         <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive flex items-start gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -754,6 +753,7 @@ function SingleMode({ enrollment }) {
         <Button variant="outline" onClick={() => navigate(-1)}>
           Cancel
         </Button>
+        {/* FIX: show spinner + text while loading so user knows upload is in progress */}
         <Button
           onClick={() => setConfirmOpen(true)}
           disabled={!isFormValid || loading}
@@ -766,7 +766,7 @@ function SingleMode({ enrollment }) {
           ) : (
             <span className="flex items-center gap-2">
               <Upload className="w-4 h-4" />
-              Generate & Upload
+              Generate &amp; Upload
             </span>
           )}
         </Button>
@@ -804,8 +804,6 @@ function BatchMode({ enrollments }) {
     enrollments.map(() => ({ ...EMPTY_FORM })),
   );
   const [currentIdx, setCurrentIdx] = useState(0);
-
-  // [FIX #5] tambah setter untuk errors array
   const [errors, setErrors] = useState(() => enrollments.map(() => null));
 
   const [uploading, setUploading] = useState(false);
@@ -826,7 +824,6 @@ function BatchMode({ enrollments }) {
       ),
     );
 
-  // [FIX #5] helper untuk set error per-student
   const setErrorAt = (idx, message) => {
     setErrors((prev) => prev.map((e, i) => (i === idx ? message : e)));
   };
@@ -850,6 +847,9 @@ function BatchMode({ enrollments }) {
     countWords(f.content) >= MIN_WORD_COUNT;
 
   const allFormsValid = sharedValid && forms.every(isFormReady);
+
+  // FIX: block Next if shared period not yet filled
+  const canGoNext = sharedValid && currentFormValid;
 
   const doUploadAll = async () => {
     setUploading(true);
@@ -877,12 +877,10 @@ function BatchMode({ enrollments }) {
         const data = res.data.data;
         results.push({ enrollment, success: true, data });
         if (data?.id) successfulReportIds.push(data.id);
-        // [FIX #5] clear error jika berhasil
         setErrorAt(i, null);
       } catch (err) {
         const message = err.response?.data?.message ?? "Upload failed";
         results.push({ enrollment, success: false, error: message });
-        // [FIX #5] set error per-student
         setErrorAt(i, message);
       }
     }
@@ -964,6 +962,15 @@ function BatchMode({ enrollments }) {
 
       <SharedPeriodForm shared={shared} setShared={setShared} />
 
+      {/* Validation hint when shared period is incomplete */}
+      {!sharedValid && (
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-600 dark:text-amber-400 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          Fill in the shared Learning Period above before proceeding to student
+          scores.
+        </div>
+      )}
+
       {/* Step indicator */}
       <div className="glass-card px-5 py-3 space-y-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -1003,7 +1010,6 @@ function BatchMode({ enrollments }) {
         </div>
       </div>
 
-      {/* [FIX #5] pass errors[currentIdx] ke StudentReportForm */}
       <StudentReportForm
         enrollment={currentEnrollment}
         form={currentForm}
@@ -1023,9 +1029,10 @@ function BatchMode({ enrollments }) {
 
         <div className="flex gap-2">
           {currentIdx < enrollments.length - 1 ? (
+            // FIX: also require sharedValid before allowing Next
             <Button
               onClick={() => setCurrentIdx((i) => i + 1)}
-              disabled={!currentFormValid}
+              disabled={!canGoNext}
             >
               Next
               <ChevronRight className="w-4 h-4 ml-1" />

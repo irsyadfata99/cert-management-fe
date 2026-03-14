@@ -34,23 +34,30 @@ import driveService from "@/services/driveService";
 import { toast } from "sonner";
 
 // ── Font config ──────────────────────────────────────────────
+// Fonts are served from /public/fonts/ — no external network request needed,
+// so they work in production regardless of CSP restrictions.
 const FONT_URLS = {
-  playfair:
-    "https://fonts.gstatic.com/s/playfairdisplay/v37/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYh0o.woff2",
-  montserrat:
-    "https://fonts.gstatic.com/s/montserrat/v26/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtZ6Ew-.woff2",
+  playfair: "/fonts/PlayfairDisplay-Bold.ttf",
+  montserrat: "/fonts/Montserrat-Bold.ttf",
 };
+
 const fontBase64Cache = {};
 
 const fetchFontAsBase64 = async (name, url) => {
   if (fontBase64Cache[name]) return fontBase64Cache[name];
   const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load font "${name}" from ${url}: ${response.status}`,
+    );
+  }
   const buffer = await response.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   let binary = "";
   for (let i = 0; i < bytes.byteLength; i++)
     binary += String.fromCharCode(bytes[i]);
-  const base64 = `data:font/woff2;base64,${btoa(binary)}`;
+  // TTF files use data:font/truetype
+  const base64 = `data:font/truetype;base64,${btoa(binary)}`;
   fontBase64Cache[name] = base64;
   return base64;
 };
@@ -91,15 +98,15 @@ const buildPrintHTML = ({
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"/><title>Certificate</title>
 <style>
-@font-face { font-family:'Playfair Display'; font-weight:400; src:url('${playfairBase64}') format('woff2'); }
-@font-face { font-family:'Montserrat'; font-weight:600; src:url('${montserratBase64}') format('woff2'); }
+@font-face { font-family:'Playfair Display'; font-weight:700; src:url('${playfairBase64}') format('truetype'); }
+@font-face { font-family:'Montserrat'; font-weight:700; src:url('${montserratBase64}') format('truetype'); }
 *{margin:0;padding:0;box-sizing:border-box;}
 @page{size:A4 landscape;margin:0;}
 html,body{width:297mm;height:210mm;overflow:hidden;}
 .certificate{width:297mm;height:210mm;position:relative;background:#fff;}
-.student-name{position:absolute;top:98.8mm;left:0;right:0;text-align:center;font-family:'Playfair Display',Georgia,serif;font-size:34pt;font-weight:400;text-transform:uppercase;color:#000;line-height:1;white-space:nowrap;letter-spacing:0.02em;}
-.module-name{position:absolute;top:142.20mm;left:0;right:0;text-align:center;font-family:'Montserrat',Arial,sans-serif;font-size:28pt;font-weight:600;color:${moduleColor};line-height:1;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.ptc-date{position:absolute;top:172.50mm;left:73.8mm;font-family:'Montserrat',Arial,sans-serif;font-size:18pt;font-weight:600;color:#000;line-height:1;white-space:nowrap;}
+.student-name{position:absolute;top:98.8mm;left:0;right:0;text-align:center;font-family:'Playfair Display',Georgia,serif;font-size:34pt;font-weight:700;text-transform:uppercase;color:#000;line-height:1;white-space:nowrap;letter-spacing:0.02em;}
+.module-name{position:absolute;top:142.20mm;left:0;right:0;text-align:center;font-family:'Montserrat',Arial,sans-serif;font-size:28pt;font-weight:700;color:${moduleColor};line-height:1;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.ptc-date{position:absolute;top:172.50mm;left:73.8mm;font-family:'Montserrat',Arial,sans-serif;font-size:18pt;font-weight:700;color:#000;line-height:1;white-space:nowrap;}
 </style></head>
 <body><div class="certificate">
 <div class="student-name">${studentName || ""}</div>
@@ -130,16 +137,16 @@ const buildBatchPrintHTML = ({
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"/><title>Certificates</title>
 <style>
-@font-face { font-family:'Playfair Display'; font-weight:400; src:url('${playfairBase64}') format('woff2'); }
-@font-face { font-family:'Montserrat'; font-weight:600; src:url('${montserratBase64}') format('woff2'); }
+@font-face { font-family:'Playfair Display'; font-weight:700; src:url('${playfairBase64}') format('truetype'); }
+@font-face { font-family:'Montserrat'; font-weight:700; src:url('${montserratBase64}') format('truetype'); }
 *{margin:0;padding:0;box-sizing:border-box;}
 @page{size:A4 landscape;margin:0;}
 html,body{overflow:hidden;}
 .certificate{width:297mm;height:210mm;position:relative;background:#fff;page-break-after:always;}
 .certificate:last-child{page-break-after:avoid;}
-.student-name{position:absolute;top:98.8mm;left:0;right:0;text-align:center;font-family:'Playfair Display',Georgia,serif;font-size:34pt;font-weight:400;text-transform:uppercase;color:#000;line-height:1;white-space:nowrap;letter-spacing:0.02em;}
-.module-name{position:absolute;top:142.20mm;left:0;right:0;text-align:center;font-family:'Montserrat',Arial,sans-serif;font-size:28pt;font-weight:600;color:${moduleColor};line-height:1;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.ptc-date{position:absolute;top:172.50mm;left:73.8mm;font-family:'Montserrat',Arial,sans-serif;font-size:18pt;font-weight:600;color:#000;line-height:1;white-space:nowrap;}
+.student-name{position:absolute;top:98.8mm;left:0;right:0;text-align:center;font-family:'Playfair Display',Georgia,serif;font-size:34pt;font-weight:700;text-transform:uppercase;color:#000;line-height:1;white-space:nowrap;letter-spacing:0.02em;}
+.module-name{position:absolute;top:142.20mm;left:0;right:0;text-align:center;font-family:'Montserrat',Arial,sans-serif;font-size:28pt;font-weight:700;color:${moduleColor};line-height:1;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.ptc-date{position:absolute;top:172.50mm;left:73.8mm;font-family:'Montserrat',Arial,sans-serif;font-size:18pt;font-weight:700;color:#000;line-height:1;white-space:nowrap;}
 </style></head>
 <body>${pages}
 <script>document.fonts.ready.then(()=>{requestAnimationFrame(()=>{requestAnimationFrame(()=>{window.print();window.onafterprint=()=>window.close();});});});<\/script>
@@ -286,7 +293,7 @@ function CertPreview({ studentName, moduleName, ptcDate, moduleColorKey }) {
               textAlign: "center",
               fontFamily: "'Playfair Display', Georgia, serif",
               fontSize: "46px",
-              fontWeight: 400,
+              fontWeight: 700,
               textTransform: "uppercase",
               color: "#000",
               lineHeight: 1,
@@ -305,7 +312,7 @@ function CertPreview({ studentName, moduleName, ptcDate, moduleColorKey }) {
               textAlign: "center",
               fontFamily: "'Montserrat', Arial, sans-serif",
               fontSize: "38px",
-              fontWeight: 600,
+              fontWeight: 700,
               color: moduleName ? moduleColorHex : "#ccc",
               lineHeight: 1,
               whiteSpace: "nowrap",
@@ -320,7 +327,7 @@ function CertPreview({ studentName, moduleName, ptcDate, moduleColorKey }) {
               left: "279px",
               fontFamily: "'Montserrat', Arial, sans-serif",
               fontSize: "24px",
-              fontWeight: 600,
+              fontWeight: 700,
               color: "#000",
               lineHeight: 1,
               whiteSpace: "nowrap",
@@ -808,7 +815,6 @@ function BatchPrintTab({
 
   const validStudents = students.filter(Boolean);
 
-  // [FIX #6] Validasi duplikat enrollment sebelum print
   const hasDuplicates = () => {
     const ids = validStudents.map((s) => s.enrollment_id);
     return new Set(ids).size !== ids.length;
@@ -829,7 +835,6 @@ function BatchPrintTab({
       toast.error("Fill in all students or remove empty rows");
       return;
     }
-    // [FIX #6] Cek duplikat
     if (hasDuplicates()) {
       toast.error(
         "Duplicate students detected. Each student can only appear once.",
@@ -1032,7 +1037,6 @@ function BatchPrintTab({
             )}
           </div>
         ))}
-        {/* [FIX #6] Tampilkan warning jika ada duplikat */}
         {hasDuplicates() && (
           <p className="text-xs text-destructive">
             Duplicate students detected. Each student can only appear once.
@@ -1075,11 +1079,9 @@ export default function PrintPage() {
   const [enrollments, setEnrollments] = useState([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
 
-  // [FIX #3] is_reprint harus string "false" bukan boolean false
   const [certificates, setCertificates] = useState([]);
   const [loadingCertificates, setLoadingCertificates] = useState(true);
 
-  // [FIX #7] batch state di-reset saat tab switch dengan key
   const [activeTab, setActiveTab] = useState("single");
   const [batchPtcDate, setBatchPtcDate] = useState("");
   const [batchModuleColorKey, setBatchModuleColorKey] =
@@ -1102,7 +1104,6 @@ export default function PrintPage() {
   const fetchCertificates = useCallback(async () => {
     setLoadingCertificates(true);
     try {
-      // [FIX #3] Gunakan string "false" bukan boolean false
       const res = await teacherActionService.getCertificates({
         limit: 200,
         is_reprint: "false",
@@ -1120,7 +1121,6 @@ export default function PrintPage() {
     fetchCertificates();
   }, [fetchEnrollments, fetchCertificates]);
 
-  // [FIX #7] Reset batch state saat user kembali ke tab batch
   const handleTabChange = (val) => {
     setActiveTab(val);
     if (val === "batch" && batchPrintedCerts !== null) {

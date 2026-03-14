@@ -1,27 +1,37 @@
-import axios from "axios";
+// Auth endpoints (/auth/me, /auth/logout, /auth/google) are mounted at the
+// server root, NOT under /api.  We derive the auth base URL from VITE_API_URL
+// so there is only one env var to set and one axios instance to maintain.
+//
+// Example:
+//   VITE_API_URL = "http://localhost:3000/api"
+//   → authBase   = "http://localhost:3000"
+//
+// The shared `api` instance is used directly with absolute URLs so its
+// interceptors (401 redirect, credentials, etc.) still apply.
 
-// Auth routes di backend mount di /auth (tanpa /api prefix)
-const authBase = axios.create({
-  baseURL: import.meta.env.VITE_AUTH_URL || "http://localhost:3000",
-  withCredentials: true,
-  headers: { "Content-Type": "application/json" },
-});
+import api from "./api";
+
+const getAuthBase = () => {
+  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+  // Strip trailing /api segment to get the server root.
+  return apiUrl.replace(/\/api\/?$/, "");
+};
 
 const authService = {
-  // Redirect ke Google OAuth
+  // Redirect to Google OAuth — browser navigation, no axios needed.
   loginWithGoogle: () => {
-    window.location.href = import.meta.env.VITE_GOOGLE_LOGIN_URL;
+    window.location.href = `${getAuthBase()}/auth/google`;
   },
 
-  // Get current logged-in user
+  // Get current logged-in user from the session cookie.
   getMe: async () => {
-    const res = await authBase.get("/auth/me");
-    return res.data.data; // { id, name, email, role, center_id, photo }
+    const res = await api.get(`${getAuthBase()}/auth/me`);
+    return res.data.data;
   },
 
-  // Logout
+  // Invalidate the server-side session.
   logout: async () => {
-    await authBase.post("/auth/logout");
+    await api.post(`${getAuthBase()}/auth/logout`);
   },
 };
 

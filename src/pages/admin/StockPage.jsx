@@ -490,8 +490,6 @@ export default function StockPage() {
   const fetchStock = useCallback(async () => {
     setLoading(true);
     try {
-      // [FIX] Pakai GET /admin/stock — accessible oleh admin & super_admin,
-      // return semua center tanpa filter has_alert, field: cert_stock & medal_stock
       const res = await driveService.getAdminStock();
       setStockData(Array.isArray(res.data) ? res.data : [res.data]);
     } catch (err) {
@@ -524,10 +522,11 @@ export default function StockPage() {
 
   return (
     <div className="space-y-6">
+      {/* FIX: prop name was "action" (singular) — PageHeader only accepts "actions" */}
       <PageHeader
         title="Stock Management"
         description="Manage certificate and medal stock across centers"
-        action={
+        actions={
           <Button
             variant="outline"
             size="sm"

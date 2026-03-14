@@ -18,6 +18,12 @@ const teacherActionService = {
   reprintCert: (data) =>
     api.post("/teacher/certificates/reprint", data).then((r) => r.data),
 
+  // ── Medals ──
+  // Fetches real medal records from the server so HistoryPage does not
+  // have to derive medal existence from the certificates table.
+  getMedals: (params) =>
+    api.get("/teacher/medals", { params }).then((r) => r.data),
+
   // ── Reports ──
   getReports: (params) =>
     api.get("/teacher/reports", { params }).then((r) => r.data),
