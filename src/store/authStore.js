@@ -6,6 +6,8 @@ const useAuthStore = create(
   persist(
     (set, get) => ({
       user: null,
+      // [FIX #11] isAuthenticated tidak di-persist, selalu false saat init
+      // nilai true hanya datang dari fetchMe yang berhasil
       isAuthenticated: false,
       isLoading: false,
 
@@ -17,8 +19,7 @@ const useAuthStore = create(
           set({ user, isAuthenticated: true, isLoading: false });
           return user;
         } catch {
-          // [FIX #11] reset isAuthenticated saat fetchMe gagal
-          // agar tidak stale dari localStorage
+          // [FIX #11] reset keduanya saat fetchMe gagal
           set({ user: null, isAuthenticated: false, isLoading: false });
           return null;
         }
@@ -41,9 +42,11 @@ const useAuthStore = create(
     }),
     {
       name: "auth-storage",
-      // [FIX #11] hanya persist `user`, BUKAN `isAuthenticated`
-      // isAuthenticated selalu dihitung ulang dari hasil fetchMe
-      // sehingga tidak bisa stale di localStorage
+      // [FIX #11] hanya persist user, BUKAN isAuthenticated
+      // Saat page refresh: user ada di localStorage (untuk pre-fill),
+      // tapi isAuthenticated tetap false sampai fetchMe berhasil.
+      // AuthGuard menunggu fetchMe selesai (via checking state)
+      // sebelum redirect, jadi tidak ada flash redirect ke /login.
       partialize: (state) => ({
         user: state.user,
       }),

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { Search, RefreshCw, Download, Filter } from "lucide-react";
+import { Search, RefreshCw, Download, AlertTriangle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -56,6 +56,11 @@ const formatDate = (val) => {
     year: "numeric",
   });
 };
+
+// [FIX #3] limit per fetch — cukup untuk kebanyakan teacher,
+// tidak terlalu berat di server
+const FETCH_LIMIT = 100;
+const PAGE_SIZE = 15;
 
 // ── Download report handler ──────────────────────────────────
 
@@ -184,7 +189,7 @@ const columns = [
   },
 ];
 
-// ── Normalize raw API data into unified rows ─────────────────
+// ── Normalize ────────────────────────────────────────────────
 
 const normalizeEnrollments = (data) =>
   data.map((e) => ({
@@ -263,20 +268,15 @@ const STATUS_OPTIONS = [
   { value: "issued", label: "Issued" },
 ];
 
-const PAGE_SIZE = 15;
-
-// [FIX #13] Ganti limit: 500 dengan fetch bertahap menggunakan
-// limit yang wajar (100) per tipe data
-const FETCH_LIMIT = 100;
-
 // ── Main Page ────────────────────────────────────────────────
 
 export default function HistoryPage() {
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // [FIX #3] track apakah data mungkin terpotong
+  const [dataTruncated, setDataTruncated] = useState(false);
 
-  // Filters
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -289,7 +289,6 @@ export default function HistoryPage() {
     reset();
   }, [search, selectedType, selectedStatus, dateFrom, dateTo, reset]);
 
-  // [FIX #13] fetch dengan limit 100 per tipe, bukan 500
   const fetchAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -301,13 +300,25 @@ export default function HistoryPage() {
         teacherActionService.getReports({ limit: FETCH_LIMIT }),
       ]);
 
+      const enrollData = enrollRes.data ?? [];
       const certData = certRes.data ?? [];
+      const reportData = reportRes.data ?? [];
+
+      // [FIX #3] deteksi jika salah satu fetch mencapai limit
+      const enrollTotal = enrollRes.pagination?.total ?? 0;
+      const certTotal = certRes.pagination?.total ?? 0;
+      const reportTotal = reportRes.pagination?.total ?? 0;
+      const isTruncated =
+        enrollTotal > FETCH_LIMIT ||
+        certTotal > FETCH_LIMIT ||
+        reportTotal > FETCH_LIMIT;
+      setDataTruncated(isTruncated);
 
       const rows = [
-        ...normalizeEnrollments(enrollRes.data ?? []),
+        ...normalizeEnrollments(enrollData),
         ...normalizeCertificates(certData),
         ...normalizeMedals(certData),
-        ...normalizeReports(reportRes.data ?? []),
+        ...normalizeReports(reportData),
       ];
 
       rows.sort((a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0));
@@ -326,7 +337,6 @@ export default function HistoryPage() {
     fetchAll();
   }, [fetchAll]);
 
-  // ── Client-side filter ───────────────────────────────────
   const filteredRows = useMemo(() => {
     return allRows.filter((row) => {
       if (selectedType !== "all" && row.type !== selectedType) return false;
@@ -352,14 +362,12 @@ export default function HistoryPage() {
     });
   }, [allRows, search, selectedType, selectedStatus, dateFrom, dateTo]);
 
-  // ── Pagination ───────────────────────────────────────────
   const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
   const pagedRows = filteredRows.slice(
     (page - 1) * PAGE_SIZE,
     page * PAGE_SIZE,
   );
 
-  // ── Summary counts ───────────────────────────────────────
   const summary = useMemo(() => {
     const counts = {
       enrollment: 0,
@@ -374,7 +382,6 @@ export default function HistoryPage() {
     return counts;
   }, [allRows]);
 
-  // ── Export CSV ───────────────────────────────────────────
   const handleExport = () => {
     if (filteredRows.length === 0) return;
 
@@ -427,7 +434,16 @@ export default function HistoryPage() {
         }
       />
 
-      {/* ── Summary Chips ── */}
+      {/* [FIX #3] warning jika data terpotong */}
+      {dataTruncated && !loading && (
+        <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-sm text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          Showing the most recent {FETCH_LIMIT} records per category. Some older
+          records may not be displayed.
+        </div>
+      )}
+
+      {/* Summary Chips */}
       {!loading && (
         <div className="flex flex-wrap gap-2">
           {Object.entries(summary).map(([type, count]) => {
@@ -465,7 +481,7 @@ export default function HistoryPage() {
         </div>
       )}
 
-      {/* ── Filters ── */}
+      {/* Filters */}
       <Card className="glass-card border-0">
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -562,7 +578,7 @@ export default function HistoryPage() {
         </CardContent>
       </Card>
 
-      {/* ── Table ── */}
+      {/* Table */}
       <Card className="glass-card border-0">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold">Activity Log</CardTitle>
