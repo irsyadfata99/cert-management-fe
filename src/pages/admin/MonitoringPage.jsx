@@ -5,8 +5,10 @@ import {
   BarChart3,
   Package,
   Download,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -24,6 +26,7 @@ import {
   exportUploadStatus,
   exportActivity,
   exportStockAlerts,
+  exportReprints,
 } from "@/utils/exportXlsx";
 import { toast } from "sonner";
 import usePagination from "@/hooks/usePagination";
@@ -37,6 +40,9 @@ const monitoringService = {
     api.get("/admin/monitoring/activity", { params }).then((r) => r.data),
   getStockAlerts: () =>
     api.get("/admin/monitoring/stock-alerts").then((r) => r.data),
+  // [NEW] Reprint log — endpoint khusus admin, auto-filter ke center admin
+  getReprints: (params) =>
+    api.get("/admin/monitoring/reprints", { params }).then((r) => r.data),
 };
 
 // ── Upload Status badge helper ────────────────────────────────
@@ -158,6 +164,19 @@ export default function AdminMonitoringPage() {
   const [stockData, setStockData] = useState([]);
   const [stockLoading, setStockLoading] = useState(true);
 
+  // ── [NEW] Reprint ──
+  const [reprintData, setReprintData] = useState([]);
+  const [reprintTotal, setReprintTotal] = useState(0);
+  const [reprintLoading, setReprintLoading] = useState(true);
+  const [reprintDateFrom, setReprintDateFrom] = useState("");
+  const [reprintDateTo, setReprintDateTo] = useState("");
+  const {
+    page: reprintPage,
+    limit: reprintLimit,
+    goToPage: goToReprintPage,
+    reset: resetReprint,
+  } = usePagination(10);
+
   // ── Fetch Upload Status ──
   const fetchUploadStatus = useCallback(async () => {
     setUploadLoading(true);
@@ -202,6 +221,25 @@ export default function AdminMonitoringPage() {
     }
   }, []);
 
+  // ── [NEW] Fetch Reprints ──
+  const fetchReprints = useCallback(async () => {
+    setReprintLoading(true);
+    try {
+      const res = await monitoringService.getReprints({
+        page: reprintPage,
+        limit: reprintLimit,
+        date_from: reprintDateFrom || undefined,
+        date_to: reprintDateTo || undefined,
+      });
+      setReprintData(res.data ?? []);
+      setReprintTotal(res.pagination?.total ?? 0);
+    } catch {
+      toast.error("Failed to load reprint log");
+    } finally {
+      setReprintLoading(false);
+    }
+  }, [reprintPage, reprintLimit, reprintDateFrom, reprintDateTo]);
+
   useEffect(() => {
     fetchUploadStatus();
   }, [fetchUploadStatus]);
@@ -211,10 +249,16 @@ export default function AdminMonitoringPage() {
   useEffect(() => {
     fetchStockAlerts();
   }, [fetchStockAlerts]);
+  useEffect(() => {
+    fetchReprints();
+  }, [fetchReprints]);
 
   useEffect(() => {
     resetUpload();
   }, [uploadStatusFilter, resetUpload]);
+  useEffect(() => {
+    resetReprint();
+  }, [reprintDateFrom, reprintDateTo, resetReprint]);
 
   // ── Upload Status Columns ──
   const uploadColumns = [
@@ -294,7 +338,7 @@ export default function AdminMonitoringPage() {
     },
   ];
 
-  // ── Activity Columns ──
+  // ── Activity Columns — [CHANGED] medal_printed → Medal Issued ──
   const activityColumns = [
     {
       header: "Center",
@@ -329,6 +373,7 @@ export default function AdminMonitoringPage() {
       ),
     },
     {
+      // [CHANGED] label dari "Cert Reprint" tetap, tapi lebih eksplisit
       header: "Cert Reprint",
       accessorKey: "cert_reprinted",
       cell: ({ row }) => (
@@ -347,8 +392,9 @@ export default function AdminMonitoringPage() {
       ),
     },
     {
+      // [CHANGED] "Medal Issued" — konsisten dengan dashboard
       header: "Medal Issued",
-      accessorKey: "medal_issued",
+      accessorKey: "medal_printed",
       cell: ({ row }) => (
         <span className="text-sm tabular-nums">
           {row.original.medal_printed ?? 0}
@@ -366,22 +412,83 @@ export default function AdminMonitoringPage() {
     },
   ];
 
-  // Paginate activity client-side (backend returns max 120 rows)
+  // ── [NEW] Reprint Columns ──
+  const reprintColumns = [
+    {
+      header: "Teacher",
+      accessorKey: "teacher_name",
+      cell: ({ row }) => (
+        <div>
+          <p className="font-medium text-foreground text-sm">
+            {row.original.teacher_name}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {row.original.teacher_email}
+          </p>
+        </div>
+      ),
+    },
+    {
+      header: "Student",
+      accessorKey: "student_name",
+      cell: ({ row }) => (
+        <span className="text-sm font-medium">{row.original.student_name}</span>
+      ),
+    },
+    {
+      header: "Module",
+      accessorKey: "module_name",
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.module_name}
+        </span>
+      ),
+    },
+    {
+      header: "Reprint Cert ID",
+      accessorKey: "reprint_cert_unique_id",
+      cell: ({ row }) => (
+        <span className="text-xs font-mono text-foreground">
+          {row.original.reprint_cert_unique_id}
+        </span>
+      ),
+    },
+    {
+      header: "Original Cert ID",
+      accessorKey: "original_cert_unique_id",
+      cell: ({ row }) => (
+        <span className="text-xs font-mono text-muted-foreground">
+          {row.original.original_cert_unique_id ?? "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Reprinted At",
+      accessorKey: "reprinted_at",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {formatDate(row.original.reprinted_at)}
+        </span>
+      ),
+    },
+  ];
+
+  // Paginate activity client-side
   const activityPaged = activityData.slice(
     (actPage - 1) * actLimit,
     actPage * actLimit,
   );
   const activityTotalPages = Math.ceil(activityData.length / actLimit);
   const uploadTotalPages = Math.ceil(uploadTotal / uploadLimit);
+  const reprintTotalPages = Math.ceil(reprintTotal / reprintLimit);
 
-  // Stock alert counts
   const alertCount = stockData.filter((s) => s.has_alert).length;
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Monitoring"
-        description="Track upload progress, monthly activity, and stock levels."
+        description="Track upload progress, monthly activity, reprints, and stock levels."
       />
 
       {/* ── Stock Alerts ── */}
@@ -485,6 +592,81 @@ export default function AdminMonitoringPage() {
             page={uploadPage}
             totalPages={uploadTotalPages}
             onPageChange={goToUploadPage}
+          />
+        </div>
+      </section>
+
+      {/* ── [NEW] Reprint Log ── */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <SectionHeader
+            icon={RotateCcw}
+            title="Reprint Log"
+            description="Siapa yang melakukan reprint dan atas nama student siapa"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={reprintData.length === 0}
+            onClick={() => exportReprints(reprintData)}
+          >
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            Export
+          </Button>
+        </div>
+
+        {/* Date range filter */}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">From</span>
+            <Input
+              type="date"
+              value={reprintDateFrom}
+              onChange={(e) => setReprintDateFrom(e.target.value)}
+              className="w-36 h-8 text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">To</span>
+            <Input
+              type="date"
+              value={reprintDateTo}
+              onChange={(e) => setReprintDateTo(e.target.value)}
+              className="w-36 h-8 text-xs"
+            />
+          </div>
+          {(reprintDateFrom || reprintDateTo) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-muted-foreground"
+              onClick={() => {
+                setReprintDateFrom("");
+                setReprintDateTo("");
+              }}
+            >
+              Clear
+            </Button>
+          )}
+          {reprintTotal > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {reprintTotal} reprint{reprintTotal !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        <DataTable
+          columns={reprintColumns}
+          data={reprintData}
+          loading={reprintLoading}
+          emptyTitle="No reprint records found"
+          emptyDescription="Belum ada reprint atau coba ubah filter tanggal."
+        />
+        <div className="mt-3">
+          <Pagination
+            page={reprintPage}
+            totalPages={reprintTotalPages}
+            onPageChange={goToReprintPage}
           />
         </div>
       </section>

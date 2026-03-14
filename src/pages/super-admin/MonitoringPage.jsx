@@ -5,6 +5,7 @@ import {
   Upload,
   RefreshCw,
   Download,
+  RotateCcw,
 } from "lucide-react";
 import {
   AreaChart,
@@ -24,6 +25,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -37,11 +39,12 @@ import DataTable from "@/components/common/DataTable";
 import Pagination from "@/components/common/Pagination";
 import monitoringService from "@/services/monitoringService";
 import centerService from "@/services/centerService";
-import { formatMonth } from "@/utils/formatDate";
+import { formatDate, formatMonth } from "@/utils/formatDate";
 import {
   exportUploadStatus,
   exportActivity,
   exportStockAlerts,
+  exportReprints,
 } from "@/utils/exportXlsx";
 import { toast } from "sonner";
 import usePagination from "@/hooks/usePagination";
@@ -182,6 +185,76 @@ const stockColumns = [
   },
 ];
 
+// ── [NEW] Reprint log columns ───────────────────────────────
+const reprintColumns = [
+  {
+    header: "Teacher",
+    accessorKey: "teacher_name",
+    cell: ({ row }) => (
+      <div>
+        <p className="font-medium text-foreground text-sm">
+          {row.original.teacher_name}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {row.original.teacher_email}
+        </p>
+      </div>
+    ),
+  },
+  {
+    header: "Student",
+    accessorKey: "student_name",
+    cell: ({ row }) => (
+      <span className="text-sm font-medium">{row.original.student_name}</span>
+    ),
+  },
+  {
+    header: "Module",
+    accessorKey: "module_name",
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">
+        {row.original.module_name}
+      </span>
+    ),
+  },
+  {
+    header: "Center",
+    accessorKey: "center_name",
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">
+        {row.original.center_name}
+      </span>
+    ),
+  },
+  {
+    header: "Reprint Cert ID",
+    accessorKey: "reprint_cert_unique_id",
+    cell: ({ row }) => (
+      <span className="text-xs font-mono text-foreground">
+        {row.original.reprint_cert_unique_id}
+      </span>
+    ),
+  },
+  {
+    header: "Original Cert ID",
+    accessorKey: "original_cert_unique_id",
+    cell: ({ row }) => (
+      <span className="text-xs font-mono text-muted-foreground">
+        {row.original.original_cert_unique_id ?? "—"}
+      </span>
+    ),
+  },
+  {
+    header: "Reprinted At",
+    accessorKey: "reprinted_at",
+    cell: ({ row }) => (
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {formatDate(row.original.reprinted_at)}
+      </span>
+    ),
+  },
+];
+
 // ── Main Page ───────────────────────────────────────────────
 export default function SuperAdminMonitoringPage() {
   const [centers, setCenters] = useState([]);
@@ -189,17 +262,36 @@ export default function SuperAdminMonitoringPage() {
   const [selectedCenter, setSelectedCenter] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
 
+  // Upload Status state
   const [uploadData, setUploadData] = useState([]);
   const [uploadTotal, setUploadTotal] = useState(0);
+
+  // Activity state
   const [activityData, setActivityData] = useState([]);
+
+  // Stock Alerts state
   const [stockAlerts, setStockAlerts] = useState([]);
 
+  // [NEW] Reprint state
+  const [reprintData, setReprintData] = useState([]);
+  const [reprintTotal, setReprintTotal] = useState(0);
+  const [reprintDateFrom, setReprintDateFrom] = useState("");
+  const [reprintDateTo, setReprintDateTo] = useState("");
+
+  // Loading states
   const [uploadLoading, setUploadLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(true);
   const [stockLoading, setStockLoading] = useState(true);
+  const [reprintLoading, setReprintLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const { page, limit, goToPage, reset } = usePagination(10);
+  const {
+    page: reprintPage,
+    limit: reprintLimit,
+    goToPage: goToReprintPage,
+    reset: resetReprint,
+  } = usePagination(10);
 
   useEffect(() => {
     centerService
@@ -212,6 +304,11 @@ export default function SuperAdminMonitoringPage() {
     reset();
   }, [selectedCenter, selectedStatus, reset]);
 
+  useEffect(() => {
+    resetReprint();
+  }, [selectedCenter, reprintDateFrom, reprintDateTo, resetReprint]);
+
+  // ── Fetch Upload Status ──
   const fetchUpload = useCallback(async () => {
     setUploadLoading(true);
     try {
@@ -230,6 +327,7 @@ export default function SuperAdminMonitoringPage() {
     }
   }, [page, limit, selectedCenter, selectedStatus]);
 
+  // ── Fetch Activity ──
   const fetchActivity = useCallback(async () => {
     setActivityLoading(true);
     try {
@@ -244,6 +342,7 @@ export default function SuperAdminMonitoringPage() {
     }
   }, [selectedCenter]);
 
+  // ── Fetch Stock Alerts ──
   const fetchStock = useCallback(async () => {
     setStockLoading(true);
     try {
@@ -256,6 +355,32 @@ export default function SuperAdminMonitoringPage() {
     }
   }, []);
 
+  // ── [NEW] Fetch Reprints ──
+  const fetchReprints = useCallback(async () => {
+    setReprintLoading(true);
+    try {
+      const res = await monitoringService.getSuperReprints({
+        page: reprintPage,
+        limit: reprintLimit,
+        center_id: selectedCenter !== "all" ? selectedCenter : undefined,
+        date_from: reprintDateFrom || undefined,
+        date_to: reprintDateTo || undefined,
+      });
+      setReprintData(res.data ?? []);
+      setReprintTotal(res.pagination?.total ?? 0);
+    } catch {
+      toast.error("Failed to load reprint log");
+    } finally {
+      setReprintLoading(false);
+    }
+  }, [
+    reprintPage,
+    reprintLimit,
+    selectedCenter,
+    reprintDateFrom,
+    reprintDateTo,
+  ]);
+
   useEffect(() => {
     fetchUpload();
   }, [fetchUpload]);
@@ -265,14 +390,23 @@ export default function SuperAdminMonitoringPage() {
   useEffect(() => {
     fetchStock();
   }, [fetchStock]);
+  useEffect(() => {
+    fetchReprints();
+  }, [fetchReprints]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchUpload(), fetchActivity(), fetchStock()]);
+    await Promise.all([
+      fetchUpload(),
+      fetchActivity(),
+      fetchStock(),
+      fetchReprints(),
+    ]);
     setRefreshing(false);
     toast.success("Data refreshed");
   };
 
+  // ── Chart data — now includes cert_reprinted ──
   const chartData = useMemo(() => {
     const grouped = {};
     for (const row of activityData) {
@@ -281,24 +415,27 @@ export default function SuperAdminMonitoringPage() {
         grouped[month] = {
           month,
           cert_printed: 0,
+          cert_reprinted: 0,
           medal_issued: 0,
           cert_scan_uploaded: 0,
         };
       }
       grouped[month].cert_printed += Number(row.cert_printed ?? 0);
-      grouped[month].medal_issued += Number(row.medal_printed ?? 0); // ✅ FIX
+      grouped[month].cert_reprinted += Number(row.cert_reprinted ?? 0);
+      grouped[month].medal_issued += Number(row.medal_printed ?? 0);
       grouped[month].cert_scan_uploaded += Number(row.cert_scan_uploaded ?? 0);
     }
     return Object.values(grouped).slice(0, 12).reverse();
   }, [activityData]);
 
-  const totalPages = Math.ceil(uploadTotal / limit);
+  const uploadTotalPages = Math.ceil(uploadTotal / limit);
+  const reprintTotalPages = Math.ceil(reprintTotal / reprintLimit);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Monitoring"
-        description="Track upload status, activity, and stock levels across all centers."
+        description="Track upload status, activity, reprints, and stock levels across all centers."
         actions={
           <Button
             variant="outline"
@@ -349,7 +486,7 @@ export default function SuperAdminMonitoringPage() {
         )}
       </div>
 
-      {/* ── Activity Chart ── */}
+      {/* ── Activity Chart — now 3 series including reprint ── */}
       <Card className="glass-card border-0">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -403,6 +540,19 @@ export default function SuperAdminMonitoringPage() {
                       stopOpacity={0}
                     />
                   </linearGradient>
+                  {/* [NEW] Reprint gradient */}
+                  <linearGradient id="reprintGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor="hsl(280,79%,66%)"
+                      stopOpacity={0.3}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="hsl(280,79%,66%)"
+                      stopOpacity={0}
+                    />
+                  </linearGradient>
                   <linearGradient id="medalGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop
                       offset="5%"
@@ -447,6 +597,15 @@ export default function SuperAdminMonitoringPage() {
                   name="Cert Printed"
                   stroke="hsl(219,79%,66%)"
                   fill="url(#certGrad)"
+                  strokeWidth={2}
+                />
+                {/* [NEW] Reprint area */}
+                <Area
+                  type="monotone"
+                  dataKey="cert_reprinted"
+                  name="Cert Reprint"
+                  stroke="hsl(280,79%,66%)"
+                  fill="url(#reprintGrad)"
                   strokeWidth={2}
                 />
                 <Area
@@ -505,12 +664,97 @@ export default function SuperAdminMonitoringPage() {
             emptyDescription="Try adjusting the status filter."
           />
         </CardContent>
-        {totalPages > 1 && (
+        {uploadTotalPages > 1 && (
           <div className="px-4 pb-4">
             <Pagination
               page={page}
-              totalPages={totalPages}
+              totalPages={uploadTotalPages}
               onPageChange={goToPage}
+            />
+          </div>
+        )}
+      </Card>
+
+      {/* ── [NEW] Reprint Log ── */}
+      <Card className="glass-card border-0">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-muted-foreground" />
+                Reprint Log
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Re-Print Activity
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={reprintData.length === 0}
+              onClick={() => exportReprints(reprintData)}
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Export
+            </Button>
+          </div>
+        </CardHeader>
+
+        {/* Date range filter khusus reprint */}
+        <div className="px-4 pb-3 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">From</span>
+            <Input
+              type="date"
+              value={reprintDateFrom}
+              onChange={(e) => setReprintDateFrom(e.target.value)}
+              className="w-36 h-8 text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">To</span>
+            <Input
+              type="date"
+              value={reprintDateTo}
+              onChange={(e) => setReprintDateTo(e.target.value)}
+              className="w-36 h-8 text-xs"
+            />
+          </div>
+          {(reprintDateFrom || reprintDateTo) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-muted-foreground"
+              onClick={() => {
+                setReprintDateFrom("");
+                setReprintDateTo("");
+              }}
+            >
+              Clear
+            </Button>
+          )}
+          {reprintTotal > 0 && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              {reprintTotal} reprint{reprintTotal !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        <CardContent className="p-0">
+          <DataTable
+            columns={reprintColumns}
+            data={reprintData}
+            loading={reprintLoading}
+            emptyTitle="No reprint records found"
+            emptyDescription="Belum ada reprint atau coba ubah filter tanggal."
+          />
+        </CardContent>
+        {reprintTotalPages > 1 && (
+          <div className="px-4 pb-4">
+            <Pagination
+              page={reprintPage}
+              totalPages={reprintTotalPages}
+              onPageChange={goToReprintPage}
             />
           </div>
         )}

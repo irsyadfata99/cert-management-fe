@@ -2,7 +2,7 @@
 // Requires: npm install xlsx
 //
 // Penggunaan di komponen:
-//   import { exportUploadStatus, exportActivity, exportStockAlerts } from "@/utils/exportXlsx";
+//   import { exportUploadStatus, exportActivity, exportStockAlerts, exportReprints } from "@/utils/exportXlsx";
 
 import * as XLSX from "xlsx";
 
@@ -137,5 +137,37 @@ export function exportStockAlerts(rows, filename = "stock-alerts.xlsx") {
   ]);
 
   const wb = buildWorkbook("Stock Alerts", headers, data);
+  XLSX.writeFile(wb, filename);
+}
+
+// ── 4. [NEW] Reprint Log ──────────────────────────────────────
+export function exportReprints(rows, filename = "reprint-log.xlsx") {
+  const headers = [
+    "Teacher",
+    "Teacher Email",
+    "Student",
+    "Module",
+    "Center",
+    "Reprint Cert ID",
+    "Original Cert ID",
+    "Original Printed At",
+    "Reprinted At",
+    "PTC Date",
+  ];
+
+  const data = rows.map((r) => [
+    r.teacher_name ?? "",
+    r.teacher_email ?? "",
+    r.student_name ?? "",
+    r.module_name ?? "",
+    r.center_name ?? "",
+    r.reprint_cert_unique_id ?? "",
+    r.original_cert_unique_id ?? "",
+    fmtDateTime(r.original_printed_at),
+    fmtDateTime(r.reprinted_at),
+    r.ptc_date ? String(r.ptc_date).split("T")[0] : "",
+  ]);
+
+  const wb = buildWorkbook("Reprint Log", headers, data);
   XLSX.writeFile(wb, filename);
 }

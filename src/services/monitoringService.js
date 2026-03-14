@@ -16,6 +16,10 @@ const monitoringService = {
   getSuperStockAlerts: () =>
     api.get("/super-admin/monitoring/stock-alerts").then((r) => r.data),
 
+  // ── [NEW] Reprint log ──
+  getSuperReprints: (params) =>
+    api.get("/super-admin/monitoring/reprints", { params }).then((r) => r.data),
+
   downloadEnrollments: (params) =>
     api
       .get("/super-admin/download/enrollments", {
