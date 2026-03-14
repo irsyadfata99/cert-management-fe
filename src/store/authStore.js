@@ -17,6 +17,8 @@ const useAuthStore = create(
           set({ user, isAuthenticated: true, isLoading: false });
           return user;
         } catch {
+          // [FIX #11] reset isAuthenticated saat fetchMe gagal
+          // agar tidak stale dari localStorage
           set({ user: null, isAuthenticated: false, isLoading: false });
           return null;
         }
@@ -39,10 +41,11 @@ const useAuthStore = create(
     }),
     {
       name: "auth-storage",
-      // hanya persist user & isAuthenticated, bukan isLoading
+      // [FIX #11] hanya persist `user`, BUKAN `isAuthenticated`
+      // isAuthenticated selalu dihitung ulang dari hasil fetchMe
+      // sehingga tidak bisa stale di localStorage
       partialize: (state) => ({
         user: state.user,
-        isAuthenticated: state.isAuthenticated,
       }),
     },
   ),

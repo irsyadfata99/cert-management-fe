@@ -20,7 +20,8 @@ import PageHeader from "@/components/common/PageHeader";
 import StatusBadge from "@/components/common/StatusBadge";
 import DataTable from "@/components/common/DataTable";
 import Pagination from "@/components/common/Pagination";
-import api from "@/services/api";
+// [FIX #8] import dari service file, hapus definisi lokal
+import monitoringService from "@/services/monitoringService";
 import { formatDate } from "@/utils/formatDate";
 import {
   exportUploadStatus,
@@ -31,19 +32,6 @@ import {
 import { toast } from "sonner";
 import usePagination from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
-
-// ── Service ──────────────────────────────────────────────────
-const monitoringService = {
-  getUploadStatus: (params) =>
-    api.get("/admin/monitoring/upload-status", { params }).then((r) => r.data),
-  getActivity: (params) =>
-    api.get("/admin/monitoring/activity", { params }).then((r) => r.data),
-  getStockAlerts: () =>
-    api.get("/admin/monitoring/stock-alerts").then((r) => r.data),
-  // [NEW] Reprint log — endpoint khusus admin, auto-filter ke center admin
-  getReprints: (params) =>
-    api.get("/admin/monitoring/reprints", { params }).then((r) => r.data),
-};
 
 // ── Upload Status badge helper ────────────────────────────────
 const UPLOAD_STATUS_MAP = {
@@ -164,7 +152,7 @@ export default function AdminMonitoringPage() {
   const [stockData, setStockData] = useState([]);
   const [stockLoading, setStockLoading] = useState(true);
 
-  // ── [NEW] Reprint ──
+  // ── Reprint ──
   const [reprintData, setReprintData] = useState([]);
   const [reprintTotal, setReprintTotal] = useState(0);
   const [reprintLoading, setReprintLoading] = useState(true);
@@ -178,10 +166,11 @@ export default function AdminMonitoringPage() {
   } = usePagination(10);
 
   // ── Fetch Upload Status ──
+  // [FIX #8] gunakan monitoringService.getAdminUploadStatus (dari import)
   const fetchUploadStatus = useCallback(async () => {
     setUploadLoading(true);
     try {
-      const res = await monitoringService.getUploadStatus({
+      const res = await monitoringService.getAdminUploadStatus({
         page: uploadPage,
         limit: uploadLimit,
         status: uploadStatusFilter !== "all" ? uploadStatusFilter : undefined,
@@ -196,10 +185,11 @@ export default function AdminMonitoringPage() {
   }, [uploadPage, uploadLimit, uploadStatusFilter]);
 
   // ── Fetch Activity ──
+  // [FIX #8] gunakan monitoringService.getAdminActivity (dari import)
   const fetchActivity = useCallback(async () => {
     setActivityLoading(true);
     try {
-      const res = await monitoringService.getActivity();
+      const res = await monitoringService.getAdminActivity();
       setActivityData(res.data ?? []);
     } catch {
       toast.error("Failed to load activity data");
@@ -209,10 +199,11 @@ export default function AdminMonitoringPage() {
   }, []);
 
   // ── Fetch Stock Alerts ──
+  // [FIX #8] gunakan monitoringService.getAdminStockAlerts (dari import)
   const fetchStockAlerts = useCallback(async () => {
     setStockLoading(true);
     try {
-      const res = await monitoringService.getStockAlerts();
+      const res = await monitoringService.getAdminStockAlerts();
       setStockData(res.data ?? []);
     } catch {
       toast.error("Failed to load stock alerts");
@@ -221,11 +212,12 @@ export default function AdminMonitoringPage() {
     }
   }, []);
 
-  // ── [NEW] Fetch Reprints ──
+  // ── Fetch Reprints ──
+  // [FIX #8] tambah getAdminReprints ke monitoringService (lihat patch di bawah)
   const fetchReprints = useCallback(async () => {
     setReprintLoading(true);
     try {
-      const res = await monitoringService.getReprints({
+      const res = await monitoringService.getAdminReprints({
         page: reprintPage,
         limit: reprintLimit,
         date_from: reprintDateFrom || undefined,
@@ -338,7 +330,7 @@ export default function AdminMonitoringPage() {
     },
   ];
 
-  // ── Activity Columns — [CHANGED] medal_printed → Medal Issued ──
+  // ── Activity Columns ──
   const activityColumns = [
     {
       header: "Center",
@@ -373,7 +365,6 @@ export default function AdminMonitoringPage() {
       ),
     },
     {
-      // [CHANGED] label dari "Cert Reprint" tetap, tapi lebih eksplisit
       header: "Cert Reprint",
       accessorKey: "cert_reprinted",
       cell: ({ row }) => (
@@ -392,7 +383,6 @@ export default function AdminMonitoringPage() {
       ),
     },
     {
-      // [CHANGED] "Medal Issued" — konsisten dengan dashboard
       header: "Medal Issued",
       accessorKey: "medal_printed",
       cell: ({ row }) => (
@@ -412,7 +402,7 @@ export default function AdminMonitoringPage() {
     },
   ];
 
-  // ── [NEW] Reprint Columns ──
+  // ── Reprint Columns ──
   const reprintColumns = [
     {
       header: "Teacher",
@@ -596,7 +586,7 @@ export default function AdminMonitoringPage() {
         </div>
       </section>
 
-      {/* ── [NEW] Reprint Log ── */}
+      {/* ── Reprint Log ── */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <SectionHeader
@@ -615,7 +605,6 @@ export default function AdminMonitoringPage() {
           </Button>
         </div>
 
-        {/* Date range filter */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">From</span>

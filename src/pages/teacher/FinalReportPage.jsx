@@ -400,6 +400,7 @@ function StudentReportForm({ enrollment, form, setForm, error }) {
         </div>
       </SectionCard>
 
+      {/* [FIX #5] error sekarang tampil karena errors array punya setter */}
       {error && (
         <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive flex items-start gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -771,7 +772,6 @@ function SingleMode({ enrollment }) {
         </Button>
       </div>
 
-      {/* Confirm Dialog — Single */}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -804,7 +804,10 @@ function BatchMode({ enrollments }) {
     enrollments.map(() => ({ ...EMPTY_FORM })),
   );
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [errors] = useState(() => enrollments.map(() => null));
+
+  // [FIX #5] tambah setter untuk errors array
+  const [errors, setErrors] = useState(() => enrollments.map(() => null));
+
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -822,6 +825,11 @@ function BatchMode({ enrollments }) {
           : f,
       ),
     );
+
+  // [FIX #5] helper untuk set error per-student
+  const setErrorAt = (idx, message) => {
+    setErrors((prev) => prev.map((e, i) => (i === idx ? message : e)));
+  };
 
   const wordCount = useMemo(
     () => countWords(currentForm.content),
@@ -869,12 +877,13 @@ function BatchMode({ enrollments }) {
         const data = res.data.data;
         results.push({ enrollment, success: true, data });
         if (data?.id) successfulReportIds.push(data.id);
+        // [FIX #5] clear error jika berhasil
+        setErrorAt(i, null);
       } catch (err) {
-        results.push({
-          enrollment,
-          success: false,
-          error: err.response?.data?.message ?? "Upload failed",
-        });
+        const message = err.response?.data?.message ?? "Upload failed";
+        results.push({ enrollment, success: false, error: message });
+        // [FIX #5] set error per-student
+        setErrorAt(i, message);
       }
     }
 
@@ -972,6 +981,7 @@ function BatchMode({ enrollments }) {
         <div className="flex gap-1.5 flex-wrap">
           {enrollments.map((e, i) => {
             const ready = isFormReady(forms[i]);
+            const hasError = !!errors[i];
             return (
               <button
                 key={i}
@@ -981,9 +991,11 @@ function BatchMode({ enrollments }) {
                 className={`h-2 rounded-full transition-all duration-150 ${
                   i === currentIdx
                     ? "w-6 bg-primary"
-                    : ready
-                      ? "w-2 bg-emerald-500"
-                      : "w-2 bg-muted-foreground/30"
+                    : hasError
+                      ? "w-2 bg-destructive"
+                      : ready
+                        ? "w-2 bg-emerald-500"
+                        : "w-2 bg-muted-foreground/30"
                 }`}
               />
             );
@@ -991,6 +1003,7 @@ function BatchMode({ enrollments }) {
         </div>
       </div>
 
+      {/* [FIX #5] pass errors[currentIdx] ke StudentReportForm */}
       <StudentReportForm
         enrollment={currentEnrollment}
         form={currentForm}
@@ -1038,7 +1051,6 @@ function BatchMode({ enrollments }) {
         </div>
       </div>
 
-      {/* Confirm Dialog — Batch */}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}

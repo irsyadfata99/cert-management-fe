@@ -16,7 +16,7 @@ const monitoringService = {
   getSuperStockAlerts: () =>
     api.get("/super-admin/monitoring/stock-alerts").then((r) => r.data),
 
-  // ── [NEW] Reprint log ──
+  // [FIX #8 dependency] sudah ada sebelumnya
   getSuperReprints: (params) =>
     api.get("/super-admin/monitoring/reprints", { params }).then((r) => r.data),
 
@@ -37,6 +37,11 @@ const monitoringService = {
 
   getAdminStockAlerts: () =>
     api.get("/admin/monitoring/stock-alerts").then((r) => r.data),
+
+  // [FIX #8] tambah getAdminReprints agar AdminMonitoringPage
+  // tidak perlu definisikan monitoringService lokal lagi
+  getAdminReprints: (params) =>
+    api.get("/admin/monitoring/reprints", { params }).then((r) => r.data),
 };
 
 export default monitoringService;

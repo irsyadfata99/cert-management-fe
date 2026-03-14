@@ -391,7 +391,10 @@ export default function EnrollmentsPage() {
   const [loading, setLoading] = useState(true);
   const [modules, setModules] = useState([]);
 
+  // [FIX #4] search sekarang di-debounce dan dikirim ke fetchEnrollments
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 400);
+
   const { page, limit, goToPage, reset } = usePagination(10);
   const [sorting, setSorting] = useState({ key: "enrolled_at", order: "desc" });
   const [statusFilter, setStatusFilter] = useState("all");
@@ -419,6 +422,8 @@ export default function EnrollmentsPage() {
         sort_order: sorting.order,
         enrollment_status: statusFilter !== "all" ? statusFilter : undefined,
         module_id: moduleFilter !== "all" ? moduleFilter : undefined,
+        // [FIX #4] kirim search ke backend
+        search: debouncedSearch || undefined,
       });
       setEnrollments(res.data ?? []);
       setTotal(res.pagination?.total ?? 0);
@@ -427,15 +432,16 @@ export default function EnrollmentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, sorting, statusFilter, moduleFilter]);
+  }, [page, limit, sorting, statusFilter, moduleFilter, debouncedSearch]);
 
   useEffect(() => {
     fetchEnrollments();
   }, [fetchEnrollments]);
 
+  // [FIX #4] reset page saat search/filter berubah
   useEffect(() => {
     reset();
-  }, [statusFilter, moduleFilter, reset]);
+  }, [statusFilter, moduleFilter, debouncedSearch, reset]);
 
   const handleDeactivate = async () => {
     setDeactivating(true);
@@ -558,10 +564,11 @@ export default function EnrollmentsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
+        {/* [FIX #4] SearchInput sekarang terhubung ke debouncedSearch */}
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search enrollments..."
+          placeholder="Search by student name..."
           className="max-w-xs"
         />
         <Select value={moduleFilter} onValueChange={setModuleFilter}>

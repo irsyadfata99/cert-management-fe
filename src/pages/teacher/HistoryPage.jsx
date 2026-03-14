@@ -36,19 +36,15 @@ const TYPE_LABELS = {
 };
 
 const STATUS_MAP = {
-  // enrollment statuses
   pending: { label: "Pending", variant: "outline" },
   cert_printed: { label: "Cert Printed", variant: "secondary" },
   scan_uploaded: { label: "Scan Uploaded", variant: "info" },
   report_uploaded: { label: "Report Uploaded", variant: "info" },
   complete: { label: "Complete", variant: "success" },
-  // certificate / reprint
   scanned: { label: "Scanned", variant: "success" },
   not_scanned: { label: "Not Scanned", variant: "outline" },
-  // report
   uploaded: { label: "Uploaded", variant: "success" },
   draft: { label: "Draft", variant: "secondary" },
-  // medal — always issued
   issued: { label: "Issued", variant: "secondary" },
 };
 
@@ -78,7 +74,7 @@ function DownloadReportButton({ row }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.target = "_blank"; // open in new tab → user can print from PDF viewer
+      a.target = "_blank";
       a.rel = "noopener noreferrer";
       a.click();
       URL.revokeObjectURL(url);
@@ -214,7 +210,6 @@ const normalizeCertificates = (data) =>
     _raw: c,
   }));
 
-// Medals derived from non-reprint certificates
 const normalizeMedals = (data) =>
   data
     .filter((c) => !c.is_reprint)
@@ -256,23 +251,23 @@ const TYPE_OPTIONS = [
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
-  // Enrollment
   { value: "pending", label: "Pending" },
   { value: "cert_printed", label: "Cert Printed" },
   { value: "scan_uploaded", label: "Scan Uploaded" },
   { value: "report_uploaded", label: "Report Uploaded" },
   { value: "complete", label: "Complete" },
-  // Certificate
   { value: "scanned", label: "Scanned" },
   { value: "not_scanned", label: "Not Scanned" },
-  // Report
   { value: "uploaded", label: "Uploaded" },
   { value: "draft", label: "Draft" },
-  // Medal
   { value: "issued", label: "Issued" },
 ];
 
 const PAGE_SIZE = 15;
+
+// [FIX #13] Ganti limit: 500 dengan fetch bertahap menggunakan
+// limit yang wajar (100) per tipe data
+const FETCH_LIMIT = 100;
 
 // ── Main Page ────────────────────────────────────────────────
 
@@ -290,20 +285,20 @@ export default function HistoryPage() {
 
   const { page, goToPage, reset } = usePagination(PAGE_SIZE);
 
-  // Reset page on filter change
   useEffect(() => {
     reset();
   }, [search, selectedType, selectedStatus, dateFrom, dateTo, reset]);
 
+  // [FIX #13] fetch dengan limit 100 per tipe, bukan 500
   const fetchAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
 
     try {
       const [enrollRes, certRes, reportRes] = await Promise.all([
-        teacherActionService.getEnrollments({ limit: 500 }),
-        teacherActionService.getCertificates({ limit: 500 }),
-        teacherActionService.getReports({ limit: 500 }),
+        teacherActionService.getEnrollments({ limit: FETCH_LIMIT }),
+        teacherActionService.getCertificates({ limit: FETCH_LIMIT }),
+        teacherActionService.getReports({ limit: FETCH_LIMIT }),
       ]);
 
       const certData = certRes.data ?? [];
@@ -315,7 +310,6 @@ export default function HistoryPage() {
         ...normalizeReports(reportRes.data ?? []),
       ];
 
-      // Sort by date desc
       rows.sort((a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0));
 
       setAllRows(rows);
@@ -475,7 +469,6 @@ export default function HistoryPage() {
       <Card className="glass-card border-0">
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Search */}
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
@@ -486,7 +479,6 @@ export default function HistoryPage() {
               />
             </div>
 
-            {/* Type */}
             <Select value={selectedType} onValueChange={setSelectedType}>
               <SelectTrigger className="w-40 h-9">
                 <SelectValue placeholder="All Types" />
@@ -500,7 +492,6 @@ export default function HistoryPage() {
               </SelectContent>
             </Select>
 
-            {/* Status */}
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
               <SelectTrigger className="w-44 h-9">
                 <SelectValue placeholder="All Statuses" />
@@ -514,25 +505,20 @@ export default function HistoryPage() {
               </SelectContent>
             </Select>
 
-            {/* Date From */}
             <Input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="w-36 h-9 text-sm"
-              placeholder="From"
             />
 
-            {/* Date To */}
             <Input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="w-36 h-9 text-sm"
-              placeholder="To"
             />
 
-            {/* Clear filters */}
             {(search ||
               selectedType !== "all" ||
               selectedStatus !== "all" ||
