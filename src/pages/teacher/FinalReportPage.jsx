@@ -12,6 +12,7 @@ import {
   Loader2,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -56,9 +57,6 @@ const printReport = async (reportId) => {
   }
 };
 
-// ─── FIX: Print batch reports sequentially with delay ────────
-// Browser blocks multiple window.open() calls fired in rapid succession.
-// Opening one tab at a time with a small delay avoids popup blocking.
 const printReportsBatch = async (reportIds) => {
   for (let i = 0; i < reportIds.length; i++) {
     if (i > 0) {
@@ -118,10 +116,6 @@ const YEARS = (() => {
 })();
 
 const EMPTY_FORM = {
-  year_start: "",
-  year_end: "",
-  period_start: "",
-  period_end: "",
   score_creativity: "",
   score_critical_thinking: "",
   score_attention: "",
@@ -130,9 +124,26 @@ const EMPTY_FORM = {
   content: "",
 };
 
+const EMPTY_SHARED = {
+  year_start: "",
+  year_end: "",
+  period_start: "",
+  period_end: "",
+};
+
 // ─── Helpers ─────────────────────────────────────────────────
 const countWords = (text) =>
   text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
+
+const buildPeriodLabel = (start, end) => {
+  if (!start || !end) return "—";
+  return start === end ? start : `${start} – ${end}`;
+};
+
+const buildPeriodValue = (start, end) => {
+  if (!start || !end) return "";
+  return start === end ? start : `${start} - ${end}`;
+};
 
 // ─── Sub-components ──────────────────────────────────────────
 function SectionCard({ icon: IconComponent, title, children }) {
@@ -173,7 +184,233 @@ function ScoreSelect({ value, onChange }) {
   );
 }
 
-// ─── Report Form ─────────────────────────────────────────────
+// ─── Shared Period Form (batch) ───────────────────────────────
+function SharedPeriodForm({ shared, setShared }) {
+  const set = (key) => (val) => setShared((prev) => ({ ...prev, [key]: val }));
+
+  return (
+    <SectionCard
+      icon={CalendarDays}
+      title="Learning Period (Shared for All Students)"
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Academic Year
+          </label>
+          <div className="flex items-center gap-2">
+            <Select
+              value={shared.year_start}
+              onValueChange={(val) =>
+                setShared((prev) => ({
+                  ...prev,
+                  year_start: val,
+                  year_end:
+                    prev.year_end && Number(prev.year_end) < Number(val)
+                      ? ""
+                      : prev.year_end,
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Start" />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {YEARS.map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground shrink-0">/</span>
+            <Select
+              value={shared.year_end}
+              onValueChange={set("year_end")}
+              disabled={!shared.year_start}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="End" />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {YEARS.filter(
+                  (y) => !shared.year_start || y >= Number(shared.year_start),
+                ).map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {shared.year_start && shared.year_end && (
+            <p className="text-xs text-muted-foreground">
+              {shared.year_start}/{shared.year_end}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Period
+          </label>
+          <div className="flex items-center gap-2">
+            <Select
+              value={shared.period_start}
+              onValueChange={(val) =>
+                setShared((prev) => ({
+                  ...prev,
+                  period_start: val,
+                  period_end: prev.period_end === val ? "" : prev.period_end,
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Start" />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {MONTHS.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground shrink-0">–</span>
+            <Select
+              value={shared.period_end}
+              onValueChange={set("period_end")}
+              disabled={!shared.period_start}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="End" />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {MONTHS.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {shared.period_start && shared.period_end && (
+            <p className="text-xs text-muted-foreground">
+              {buildPeriodLabel(shared.period_start, shared.period_end)}
+            </p>
+          )}
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ─── Per-student Form (scores + content only) ────────────────
+function StudentReportForm({ enrollment, form, setForm, error }) {
+  const wordCount = useMemo(() => countWords(form.content), [form.content]);
+  const wordCountOk = wordCount >= MIN_WORD_COUNT;
+
+  const setScore = (key) => (val) =>
+    setForm((prev) => ({ ...prev, [key]: val }));
+
+  return (
+    <div className="space-y-5">
+      <div className="glass-card px-5 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <span className="text-muted-foreground">
+          Student:{" "}
+          <span className="font-medium text-foreground">
+            {enrollment.student_name}
+          </span>
+        </span>
+        <span className="text-muted-foreground">
+          Module:{" "}
+          <span className="font-medium text-foreground">
+            {enrollment.module_name}
+          </span>
+        </span>
+        <span className="text-muted-foreground">
+          Center:{" "}
+          <span className="font-medium text-foreground">
+            {enrollment.center_name}
+          </span>
+        </span>
+      </div>
+
+      <SectionCard icon={Star} title="Scores per Skill">
+        <div className="space-y-3.5">
+          {SKILLS.map((skill) => {
+            const val = form[skill.key];
+            return (
+              <div key={skill.key} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-foreground w-36 shrink-0">
+                    {skill.label}
+                  </span>
+                  <ScoreSelect value={val} onChange={setScore(skill.key)} />
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${SCORE_COLORS[val]}`}
+                    style={{ width: SCORE_BAR_WIDTH[val] }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+
+      <SectionCard icon={MessageSquare} title="Teacher's Notes">
+        <div className="space-y-2">
+          <textarea
+            value={form.content}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, content: e.target.value }))
+            }
+            placeholder={`Write notes about the student's progress, recommendations, or areas to improve. Minimum ${MIN_WORD_COUNT} words.`}
+            rows={6}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
+          />
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">
+              Minimum {MIN_WORD_COUNT} words
+            </span>
+            <span
+              className={
+                wordCountOk
+                  ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                  : wordCount > 0
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-muted-foreground"
+              }
+            >
+              {wordCount} / {MIN_WORD_COUNT} words
+            </span>
+          </div>
+          <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                wordCountOk ? "bg-emerald-500" : "bg-amber-500"
+              }`}
+              style={{
+                width: `${Math.min((wordCount / MIN_WORD_COUNT) * 100, 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      </SectionCard>
+
+      {error && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Full Report Form (single mode) ──────────────────────────
 function ReportForm({ enrollment, form, setForm, error }) {
   const wordCount = useMemo(() => countWords(form.content), [form.content]);
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
@@ -315,9 +552,7 @@ function ReportForm({ enrollment, form, setForm, error }) {
             </div>
             {form.period_start && form.period_end && (
               <p className="text-xs text-muted-foreground">
-                {form.period_start === form.period_end
-                  ? form.period_start
-                  : `${form.period_start} – ${form.period_end}`}
+                {buildPeriodLabel(form.period_start, form.period_end)}
               </p>
             )}
           </div>
@@ -399,11 +634,23 @@ function ReportForm({ enrollment, form, setForm, error }) {
 // ─── Single Mode ─────────────────────────────────────────────
 function SingleMode({ enrollment }) {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [form, setForm] = useState({
+    year_start: "",
+    year_end: "",
+    period_start: "",
+    period_end: "",
+    score_creativity: "",
+    score_critical_thinking: "",
+    score_attention: "",
+    score_responsibility: "",
+    score_coding_skills: "",
+    content: "",
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [uploaded, setUploaded] = useState(false);
   const [uploadedData, setUploadedData] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const wordCount = useMemo(() => countWords(form.content), [form.content]);
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
@@ -416,18 +663,14 @@ function SingleMode({ enrollment }) {
     allScoresFilled &&
     wordCountOk;
 
-  const handleSubmit = async () => {
-    if (!isFormValid) return;
+  const doUpload = async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await api.post("/teacher/reports", {
         enrollment_id: enrollment.enrollment_id,
         academic_year: `${form.year_start}/${form.year_end}`,
-        period:
-          form.period_start === form.period_end
-            ? form.period_start
-            : `${form.period_start} - ${form.period_end}`,
+        period: buildPeriodValue(form.period_start, form.period_end),
         score_creativity: form.score_creativity,
         score_critical_thinking: form.score_critical_thinking,
         score_attention: form.score_attention,
@@ -498,17 +741,22 @@ function SingleMode({ enrollment }) {
           </Button>
         }
       />
+
       <ReportForm
         enrollment={enrollment}
         form={form}
         setForm={setForm}
         error={error}
       />
+
       <div className="flex justify-end gap-3 pb-6">
         <Button variant="outline" onClick={() => navigate(-1)}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={!isFormValid || loading}>
+        <Button
+          onClick={() => setConfirmOpen(true)}
+          disabled={!isFormValid || loading}
+        >
           {loading ? (
             <span className="flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -522,6 +770,27 @@ function SingleMode({ enrollment }) {
           )}
         </Button>
       </div>
+
+      {/* Confirm Dialog — Single */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Konfirmasi Upload Report"
+        description={
+          `Student: ${enrollment.student_name}\n` +
+          `Module: ${enrollment.module_name}\n` +
+          `Academic Year: ${form.year_start}/${form.year_end}\n` +
+          `Period: ${buildPeriodLabel(form.period_start, form.period_end)}\n\n` +
+          `Report akan di-generate dan diupload ke Google Drive. Tindakan ini tidak dapat dibatalkan.`
+        }
+        confirmLabel="Ya, Upload & Print"
+        cancelLabel="Periksa Lagi"
+        loading={loading}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          doUpload();
+        }}
+      />
     </div>
   );
 }
@@ -530,6 +799,7 @@ function SingleMode({ enrollment }) {
 function BatchMode({ enrollments }) {
   const navigate = useNavigate();
 
+  const [shared, setShared] = useState({ ...EMPTY_SHARED });
   const [forms, setForms] = useState(() =>
     enrollments.map(() => ({ ...EMPTY_FORM })),
   );
@@ -537,6 +807,7 @@ function BatchMode({ enrollments }) {
   const [errors] = useState(() => enrollments.map(() => null));
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const currentEnrollment = enrollments[currentIdx];
   const currentForm = forms[currentIdx];
@@ -558,28 +829,27 @@ function BatchMode({ enrollments }) {
   );
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
   const allScoresFilled = SKILLS.every((s) => currentForm[s.key] !== "");
-  const currentFormValid =
-    currentForm.year_start &&
-    currentForm.year_end &&
-    currentForm.period_start &&
-    currentForm.period_end &&
-    allScoresFilled &&
-    wordCountOk;
+  const currentFormValid = allScoresFilled && wordCountOk;
+
+  const sharedValid =
+    shared.year_start &&
+    shared.year_end &&
+    shared.period_start &&
+    shared.period_end;
 
   const isFormReady = (f) =>
-    f.year_start &&
-    f.year_end &&
-    f.period_start &&
-    f.period_end &&
     SKILLS.every((s) => f[s.key] !== "") &&
     countWords(f.content) >= MIN_WORD_COUNT;
 
-  const allFormsValid = forms.every(isFormReady);
+  const allFormsValid = sharedValid && forms.every(isFormReady);
 
-  const handleUploadAll = async () => {
+  const doUploadAll = async () => {
     setUploading(true);
     const results = [];
-    const successfulReportIds = []; // ← kumpulkan semua ID dulu
+    const successfulReportIds = [];
+
+    const academicYear = `${shared.year_start}/${shared.year_end}`;
+    const period = buildPeriodValue(shared.period_start, shared.period_end);
 
     for (let i = 0; i < enrollments.length; i++) {
       const enrollment = enrollments[i];
@@ -587,11 +857,8 @@ function BatchMode({ enrollments }) {
       try {
         const res = await api.post("/teacher/reports", {
           enrollment_id: enrollment.enrollment_id,
-          academic_year: `${form.year_start}/${form.year_end}`,
-          period:
-            form.period_start === form.period_end
-              ? form.period_start
-              : `${form.period_start} - ${form.period_end}`,
+          academic_year: academicYear,
+          period,
           score_creativity: form.score_creativity,
           score_critical_thinking: form.score_critical_thinking,
           score_attention: form.score_attention,
@@ -601,7 +868,7 @@ function BatchMode({ enrollments }) {
         });
         const data = res.data.data;
         results.push({ enrollment, success: true, data });
-        if (data?.id) successfulReportIds.push(data.id); // ← kumpulkan, jangan print dulu
+        if (data?.id) successfulReportIds.push(data.id);
       } catch (err) {
         results.push({
           enrollment,
@@ -614,10 +881,6 @@ function BatchMode({ enrollments }) {
     setUploadResults(results);
     setUploading(false);
 
-    // FIX: Print semua report secara sequential SETELAH semua upload selesai.
-    // Sebelumnya printReport() dipanggil di dalam loop upload — browser memblokir
-    // window.open() ke-2 dan seterusnya karena dianggap bukan user-initiated event.
-    // Solusi: kumpulkan semua ID, lalu buka tab satu per satu dengan jeda 800ms.
     if (successfulReportIds.length > 0) {
       printReportsBatch(successfulReportIds);
     }
@@ -681,7 +944,7 @@ function BatchMode({ enrollments }) {
     <div className="max-w-2xl mx-auto space-y-6">
       <PageHeader
         title="Final Reports"
-        description="Fill in the report for each student, then upload all at once."
+        description="Fill in shared settings once, then scores & notes per student."
         actions={
           <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
             <ChevronLeft className="w-4 h-4" />
@@ -690,7 +953,9 @@ function BatchMode({ enrollments }) {
         }
       />
 
-      {/* ── Step indicator ── */}
+      <SharedPeriodForm shared={shared} setShared={setShared} />
+
+      {/* Step indicator */}
       <div className="glass-card px-5 py-3 space-y-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
@@ -726,7 +991,7 @@ function BatchMode({ enrollments }) {
         </div>
       </div>
 
-      <ReportForm
+      <StudentReportForm
         enrollment={currentEnrollment}
         form={currentForm}
         setForm={setCurrentForm}
@@ -754,7 +1019,7 @@ function BatchMode({ enrollments }) {
             </Button>
           ) : (
             <Button
-              onClick={handleUploadAll}
+              onClick={() => setConfirmOpen(true)}
               disabled={!allFormsValid || uploading}
             >
               {uploading ? (
@@ -772,6 +1037,29 @@ function BatchMode({ enrollments }) {
           )}
         </div>
       </div>
+
+      {/* Confirm Dialog — Batch */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={`Konfirmasi Upload ${enrollments.length} Report`}
+        description={
+          `Academic Year: ${shared.year_start}/${shared.year_end}\n` +
+          `Period: ${buildPeriodLabel(shared.period_start, shared.period_end)}\n\n` +
+          `${enrollments.length} report akan di-generate dan diupload ke Google Drive:\n` +
+          enrollments
+            .map((e, i) => `${i + 1}. ${e.student_name} (${e.module_name})`)
+            .join("\n") +
+          `\n\nTindakan ini tidak dapat dibatalkan.`
+        }
+        confirmLabel={`Ya, Upload & Print ${enrollments.length} Report`}
+        cancelLabel="Periksa Lagi"
+        loading={uploading}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          doUploadAll();
+        }}
+      />
     </div>
   );
 }
