@@ -2,7 +2,7 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
-  withCredentials: true, // wajib untuk session cookie
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -28,15 +28,12 @@ api.interceptors.response.use(
     const currentPath = window.location.pathname;
 
     // 401 — session habis / tidak login
-    // redirect ke login kecuali sudah di halaman login
     if (status === 401 && currentPath !== "/login") {
       window.location.href = "/login";
     }
 
-    // 403 — tidak punya akses (role tidak sesuai)
-    if (status === 403 && currentPath !== "/print") {
-      window.location.href = "/forbidden";
-    }
+    // 403 — tidak punya akses, biarkan komponen handle error-nya
+    // (tidak redirect karena /forbidden tidak terdaftar di router)
 
     return Promise.reject(error);
   },

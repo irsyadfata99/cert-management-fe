@@ -775,16 +775,16 @@ function SingleMode({ enrollment }) {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Konfirmasi Upload Report"
+        title="Confirm Report Upload"
         description={
           `Student: ${enrollment.student_name}\n` +
           `Module: ${enrollment.module_name}\n` +
           `Academic Year: ${form.year_start}/${form.year_end}\n` +
           `Period: ${buildPeriodLabel(form.period_start, form.period_end)}\n\n` +
-          `Report akan di-generate dan diupload ke Google Drive. Tindakan ini tidak dapat dibatalkan.`
+          `The report will be generated and uploaded to Google Drive. This action cannot be undone.`
         }
-        confirmLabel="Ya, Upload & Print"
-        cancelLabel="Periksa Lagi"
+        confirmLabel="Yes, Upload & Print"
+        cancelLabel="Review Again"
         loading={loading}
         onConfirm={() => {
           setConfirmOpen(false);
@@ -1042,18 +1042,18 @@ function BatchMode({ enrollments }) {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={`Konfirmasi Upload ${enrollments.length} Report`}
+        title={`Confirm Upload ${enrollments.length} Report${enrollments.length > 1 ? "s" : ""}`}
         description={
           `Academic Year: ${shared.year_start}/${shared.year_end}\n` +
           `Period: ${buildPeriodLabel(shared.period_start, shared.period_end)}\n\n` +
-          `${enrollments.length} report akan di-generate dan diupload ke Google Drive:\n` +
+          `${enrollments.length} report${enrollments.length > 1 ? "s" : ""} will be generated and uploaded to Google Drive:\n` +
           enrollments
             .map((e, i) => `${i + 1}. ${e.student_name} (${e.module_name})`)
             .join("\n") +
-          `\n\nTindakan ini tidak dapat dibatalkan.`
+          `\n\nThis action cannot be undone.`
         }
-        confirmLabel={`Ya, Upload & Print ${enrollments.length} Report`}
-        cancelLabel="Periksa Lagi"
+        confirmLabel={`Yes, Upload & Print ${enrollments.length} Report${enrollments.length > 1 ? "s" : ""}`}
+        cancelLabel="Review Again"
         loading={uploading}
         onConfirm={() => {
           setConfirmOpen(false);

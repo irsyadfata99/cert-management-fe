@@ -461,23 +461,15 @@ function SinglePrintTab({
 }) {
   const navigate = useNavigate();
 
-  // Mode
   const [isReprint, setIsReprint] = useState(false);
-
-  // Normal print state
   const [selectedEnrollment, setSelectedEnrollment] = useState(null);
-
-  // Reprint state
   const [selectedCert, setSelectedCert] = useState(null);
-
-  // Shared
   const [ptcDate, setPtcDate] = useState("");
   const [moduleColorKey, setModuleColorKey] = useState("cornflowerblue");
   const [printing, setPrinting] = useState(false);
   const [printedCert, setPrintedCert] = useState(null);
   const [scanUploaded, setScanUploaded] = useState(false);
 
-  // Reset state when toggling mode
   const handleToggleReprint = (checked) => {
     setIsReprint(checked);
     setSelectedEnrollment(null);
@@ -487,7 +479,6 @@ function SinglePrintTab({
     setScanUploaded(false);
   };
 
-  // Preview data — derive from selected enrollment or cert
   const previewStudent = isReprint
     ? (selectedCert?.student_name ?? "")
     : (selectedEnrollment?.student_name ?? "");
@@ -507,7 +498,6 @@ function SinglePrintTab({
         return;
       }
 
-      // Normalize ptc_date → YYYY-MM-DD (guard against ISO string or null)
       const normalizedPtcDate = selectedCert.ptc_date
         ? String(selectedCert.ptc_date).split("T")[0]
         : null;
@@ -616,7 +606,6 @@ function SinglePrintTab({
           <CardTitle className="text-sm">Certificate Data</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* ── Reprint toggle ── */}
           <div className="flex items-center gap-2.5 p-3 rounded-lg border border-border bg-muted/30">
             <Checkbox
               id="reprint-toggle"
@@ -636,7 +625,6 @@ function SinglePrintTab({
             </div>
           </div>
 
-          {/* ── Enrollment or Certificate selector ── */}
           <div className="space-y-1.5">
             <Label>
               {isReprint ? "Certificate" : "Enrollment"}{" "}
@@ -667,7 +655,6 @@ function SinglePrintTab({
             )}
           </div>
 
-          {/* ── PTC Date ── */}
           {!isReprint ? (
             <div className="space-y-1.5">
               <Label>
@@ -691,7 +678,6 @@ function SinglePrintTab({
             </div>
           ) : null}
 
-          {/* ── Color ── */}
           <div className="space-y-1.5">
             <Label>Module Name Color</Label>
             <ColorSwatchPicker
@@ -700,7 +686,6 @@ function SinglePrintTab({
             />
           </div>
 
-          {/* ── Print button ── */}
           <Button
             className="w-full"
             variant={isReprint ? "warning" : "default"}
@@ -708,10 +693,7 @@ function SinglePrintTab({
             disabled={printing || !canPrint}
             style={
               isReprint && !printing && canPrint
-                ? {
-                    background: "hsl(38,92%,50%)",
-                    color: "#000",
-                  }
+                ? { background: "hsl(38,92%,50%)", color: "#000" }
                 : {}
             }
           >
@@ -731,7 +713,6 @@ function SinglePrintTab({
                   : "Print Certificate"}
           </Button>
 
-          {/* ── Reprint notice ── */}
           {isReprint && !printedCert && (
             <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5 px-1">
               <RotateCcw className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -739,7 +720,6 @@ function SinglePrintTab({
             </p>
           )}
 
-          {/* ── Upload scan (after normal print only) ── */}
           {printedCert && !isReprint && !scanUploaded && (
             <UploadScanButton
               certId={printedCert.id}
@@ -767,7 +747,6 @@ function SinglePrintTab({
             </div>
           )}
 
-          {/* ── Print tips ── */}
           <div
             className="p-3 rounded-lg text-xs space-y-1"
             style={{ background: "#fef3c7", border: "1px solid #f59e0b" }}
@@ -828,10 +807,18 @@ function BatchPrintTab({
     setStudents((prev) => prev.map((s, i) => (i === idx ? enrollment : s)));
 
   const validStudents = students.filter(Boolean);
+
+  // [FIX #6] Validasi duplikat enrollment sebelum print
+  const hasDuplicates = () => {
+    const ids = validStudents.map((s) => s.enrollment_id);
+    return new Set(ids).size !== ids.length;
+  };
+
   const canPrint =
     ptcDate &&
     validStudents.length > 0 &&
-    validStudents.length === students.length;
+    validStudents.length === students.length &&
+    !hasDuplicates();
 
   const handleBatchPrint = async () => {
     if (!ptcDate) {
@@ -840,6 +827,13 @@ function BatchPrintTab({
     }
     if (students.some((s) => !s)) {
       toast.error("Fill in all students or remove empty rows");
+      return;
+    }
+    // [FIX #6] Cek duplikat
+    if (hasDuplicates()) {
+      toast.error(
+        "Duplicate students detected. Each student can only appear once.",
+      );
       return;
     }
 
@@ -1038,6 +1032,12 @@ function BatchPrintTab({
             )}
           </div>
         ))}
+        {/* [FIX #6] Tampilkan warning jika ada duplikat */}
+        {hasDuplicates() && (
+          <p className="text-xs text-destructive">
+            Duplicate students detected. Each student can only appear once.
+          </p>
+        )}
         <Button variant="outline" size="sm" onClick={addStudent}>
           <Plus className="w-4 h-4 mr-2" /> Add Student
         </Button>
@@ -1075,10 +1075,12 @@ export default function PrintPage() {
   const [enrollments, setEnrollments] = useState([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
 
-  // Non-reprint certificates for the reprint combobox
+  // [FIX #3] is_reprint harus string "false" bukan boolean false
   const [certificates, setCertificates] = useState([]);
   const [loadingCertificates, setLoadingCertificates] = useState(true);
 
+  // [FIX #7] batch state di-reset saat tab switch dengan key
+  const [activeTab, setActiveTab] = useState("single");
   const [batchPtcDate, setBatchPtcDate] = useState("");
   const [batchModuleColorKey, setBatchModuleColorKey] =
     useState("cornflowerblue");
@@ -1100,10 +1102,10 @@ export default function PrintPage() {
   const fetchCertificates = useCallback(async () => {
     setLoadingCertificates(true);
     try {
-      // Only fetch original prints (not reprints) for the reprint selector
+      // [FIX #3] Gunakan string "false" bukan boolean false
       const res = await teacherActionService.getCertificates({
         limit: 200,
-        is_reprint: false,
+        is_reprint: "false",
       });
       setCertificates(res.data ?? []);
     } catch {
@@ -1118,6 +1120,16 @@ export default function PrintPage() {
     fetchCertificates();
   }, [fetchEnrollments, fetchCertificates]);
 
+  // [FIX #7] Reset batch state saat user kembali ke tab batch
+  const handleTabChange = (val) => {
+    setActiveTab(val);
+    if (val === "batch" && batchPrintedCerts !== null) {
+      setBatchPrintedCerts(null);
+      setBatchStudents([null]);
+      setBatchPtcDate("");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -1127,7 +1139,7 @@ export default function PrintPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="single">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="single">Single</TabsTrigger>
           <TabsTrigger value="batch">Batch</TabsTrigger>

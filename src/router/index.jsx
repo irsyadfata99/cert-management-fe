@@ -35,7 +35,6 @@ import ShowcasePage from "../pages/ShowcasePage";
 const router = createBrowserRouter([
   // ── Public ──
   { path: "/login", element: <LoginPage /> },
-  { path: "/NotFoundPage", element: <NotFoundPage /> },
   { path: "/showcase", element: <ShowcasePage /> },
 
   // ── Protected ──
