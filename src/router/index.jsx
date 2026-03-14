@@ -30,12 +30,10 @@ import HistoryPage from "../pages/teacher/HistoryPage";
 
 // ── Misc Pages ──
 import NotFoundPage from "../pages/NotFoundPage";
-import ShowcasePage from "../pages/ShowcasePage";
 
 const router = createBrowserRouter([
   // ── Public ──
   { path: "/login", element: <LoginPage /> },
-  { path: "/showcase", element: <ShowcasePage /> },
 
   // ── Protected ──
   {

@@ -1,25 +1,10 @@
 // src/utils/exportXlsx.js
-// Requires: npm install xlsx
-//
-// Penggunaan di komponen:
-//   import { exportUploadStatus, exportActivity, exportStockAlerts, exportReprints } from "@/utils/exportXlsx";
+// Requires: npm install exceljs
+// (replaces deprecated xlsx@0.18.5)
 
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 // ── Helpers ───────────────────────────────────────────────────
-
-function autoWidth(ws, rows, headers) {
-  const colWidths = headers.map((h) => ({
-    wch: Math.max(h.length + 2, 12),
-  }));
-  rows.forEach((row) => {
-    row.forEach((cell, ci) => {
-      const len = cell == null ? 0 : String(cell).length;
-      if (len + 2 > colWidths[ci].wch) colWidths[ci].wch = len + 2;
-    });
-  });
-  ws["!cols"] = colWidths;
-}
 
 function fmtDateTime(val) {
   if (!val) return "";
@@ -42,14 +27,53 @@ function fmtMonth(val) {
   return d.toLocaleString("en-GB", { month: "short", year: "numeric" });
 }
 
-function buildWorkbook(sheetName, headers, data) {
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-  autoWidth(ws, data, headers);
-  // Freeze baris pertama (header)
-  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  return wb;
+/**
+ * Build a workbook with a single sheet, auto-width columns, and a frozen header row.
+ * Downloads the file automatically.
+ */
+async function buildAndDownload(sheetName, headers, rows, filename) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(sheetName);
+
+  // Header row
+  sheet.addRow(headers);
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE2EAFF" },
+  };
+  headerRow.alignment = { vertical: "middle" };
+
+  // Freeze header
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+
+  // Data rows
+  rows.forEach((row) => sheet.addRow(row));
+
+  // Auto-width: measure header + data
+  headers.forEach((header, colIdx) => {
+    const col = sheet.getColumn(colIdx + 1);
+    let maxLen = String(header).length + 2;
+    rows.forEach((row) => {
+      const cellLen = row[colIdx] != null ? String(row[colIdx]).length : 0;
+      if (cellLen + 2 > maxLen) maxLen = cellLen + 2;
+    });
+    col.width = Math.min(maxLen, 60);
+  });
+
+  // Stream to buffer and trigger download
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 const UPLOAD_STATUS_LABELS = {
@@ -61,7 +85,10 @@ const UPLOAD_STATUS_LABELS = {
 };
 
 // ── 1. Upload Status ──────────────────────────────────────────
-export function exportUploadStatus(rows, filename = "upload-status.xlsx") {
+export async function exportUploadStatus(
+  rows,
+  filename = "upload-status.xlsx",
+) {
   const headers = [
     "Teacher",
     "Email",
@@ -84,12 +111,11 @@ export function exportUploadStatus(rows, filename = "upload-status.xlsx") {
     fmtDateTime(r.report_uploaded_at),
   ]);
 
-  const wb = buildWorkbook("Upload Status", headers, data);
-  XLSX.writeFile(wb, filename);
+  await buildAndDownload("Upload Status", headers, data, filename);
 }
 
 // ── 2. Monthly Activity ───────────────────────────────────────
-export function exportActivity(rows, filename = "activity.xlsx") {
+export async function exportActivity(rows, filename = "activity.xlsx") {
   const headers = [
     "Center",
     "Month",
@@ -110,12 +136,11 @@ export function exportActivity(rows, filename = "activity.xlsx") {
     Number(r.total_issued ?? 0),
   ]);
 
-  const wb = buildWorkbook("Monthly Activity", headers, data);
-  XLSX.writeFile(wb, filename);
+  await buildAndDownload("Monthly Activity", headers, data, filename);
 }
 
 // ── 3. Stock Alerts ───────────────────────────────────────────
-export function exportStockAlerts(rows, filename = "stock-alerts.xlsx") {
+export async function exportStockAlerts(rows, filename = "stock-alerts.xlsx") {
   const headers = [
     "Center",
     "Cert Qty",
@@ -136,12 +161,11 @@ export function exportStockAlerts(rows, filename = "stock-alerts.xlsx") {
     r.medal_low_stock ? "Low" : "OK",
   ]);
 
-  const wb = buildWorkbook("Stock Alerts", headers, data);
-  XLSX.writeFile(wb, filename);
+  await buildAndDownload("Stock Alerts", headers, data, filename);
 }
 
-// ── 4. [NEW] Reprint Log ──────────────────────────────────────
-export function exportReprints(rows, filename = "reprint-log.xlsx") {
+// ── 4. Reprint Log ────────────────────────────────────────────
+export async function exportReprints(rows, filename = "reprint-log.xlsx") {
   const headers = [
     "Teacher",
     "Teacher Email",
@@ -168,6 +192,5 @@ export function exportReprints(rows, filename = "reprint-log.xlsx") {
     r.ptc_date ? String(r.ptc_date).split("T")[0] : "",
   ]);
 
-  const wb = buildWorkbook("Reprint Log", headers, data);
-  XLSX.writeFile(wb, filename);
+  await buildAndDownload("Reprint Log", headers, data, filename);
 }

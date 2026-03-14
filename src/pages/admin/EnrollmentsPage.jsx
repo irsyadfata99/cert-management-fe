@@ -391,7 +391,6 @@ export default function EnrollmentsPage() {
   const [loading, setLoading] = useState(true);
   const [modules, setModules] = useState([]);
 
-  // [FIX #4] search sekarang di-debounce dan dikirim ke fetchEnrollments
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 400);
 
@@ -422,7 +421,6 @@ export default function EnrollmentsPage() {
         sort_order: sorting.order,
         enrollment_status: statusFilter !== "all" ? statusFilter : undefined,
         module_id: moduleFilter !== "all" ? moduleFilter : undefined,
-        // [FIX #4] kirim search ke backend
         search: debouncedSearch || undefined,
       });
       setEnrollments(res.data ?? []);
@@ -438,10 +436,19 @@ export default function EnrollmentsPage() {
     fetchEnrollments();
   }, [fetchEnrollments]);
 
-  // [FIX #4] reset page saat search/filter berubah
   useEffect(() => {
     reset();
   }, [statusFilter, moduleFilter, debouncedSearch, reset]);
+
+  // Fix 6: proper sort toggle handler — DataTable calls onSortChange(key: string)
+  // so we need to convert that into the {key, order} shape our state expects.
+  const handleSortChange = useCallback((key) => {
+    setSorting((prev) =>
+      prev.key === key
+        ? { key, order: prev.order === "asc" ? "desc" : "asc" }
+        : { key, order: "asc" },
+    );
+  }, []);
 
   const handleDeactivate = async () => {
     setDeactivating(true);
@@ -564,7 +571,6 @@ export default function EnrollmentsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* [FIX #4] SearchInput sekarang terhubung ke debouncedSearch */}
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -609,7 +615,7 @@ export default function EnrollmentsPage() {
         data={enrollments}
         loading={loading}
         sorting={sorting}
-        onSortChange={setSorting}
+        onSortChange={handleSortChange}
         emptyTitle="No enrollments found"
         emptyDescription="Start by creating a new enrollment."
       />

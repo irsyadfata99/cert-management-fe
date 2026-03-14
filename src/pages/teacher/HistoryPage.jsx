@@ -57,6 +57,7 @@ const formatDate = (val) => {
   });
 };
 
+// Fix 7: increased fetch limit and show per-category truncation info
 const FETCH_LIMIT = 100;
 const PAGE_SIZE = 15;
 
@@ -213,10 +214,6 @@ const normalizeCertificates = (data) =>
     _raw: c,
   }));
 
-// Medals are now fetched separately from the medals API endpoint so the
-// data reflects what is actually in the medals table, not a derivation
-// from the certificates table (which previously included medals even when
-// the medal was never printed due to a stock error).
 const normalizeMedals = (data) =>
   data.map((m) => ({
     id: `medal-${m.id}`,
@@ -274,7 +271,9 @@ export default function HistoryPage() {
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [dataTruncated, setDataTruncated] = useState(false);
+
+  // Fix 7: track which categories are truncated with exact totals
+  const [truncationInfo, setTruncationInfo] = useState(null);
 
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("all");
@@ -293,8 +292,6 @@ export default function HistoryPage() {
     else setLoading(true);
 
     try {
-      // Fetch medals directly from the teacher medals endpoint so the data
-      // matches the actual medals table (not derived from certificates).
       const [enrollRes, certRes, reportRes, medalRes] = await Promise.all([
         teacherActionService.getEnrollments({ limit: FETCH_LIMIT }),
         teacherActionService.getCertificates({ limit: FETCH_LIMIT }),
@@ -312,12 +309,20 @@ export default function HistoryPage() {
       const reportTotal = reportRes.pagination?.total ?? 0;
       const medalTotal = medalRes.pagination?.total ?? 0;
 
-      const isTruncated =
-        enrollTotal > FETCH_LIMIT ||
-        certTotal > FETCH_LIMIT ||
-        reportTotal > FETCH_LIMIT ||
-        medalTotal > FETCH_LIMIT;
-      setDataTruncated(isTruncated);
+      // Fix 7: build per-category truncation info instead of a single boolean
+      const truncated = [];
+      if (enrollTotal > FETCH_LIMIT)
+        truncated.push(
+          `Enrollments (showing ${FETCH_LIMIT} of ${enrollTotal})`,
+        );
+      if (certTotal > FETCH_LIMIT)
+        truncated.push(`Certificates (showing ${FETCH_LIMIT} of ${certTotal})`);
+      if (reportTotal > FETCH_LIMIT)
+        truncated.push(`Reports (showing ${FETCH_LIMIT} of ${reportTotal})`);
+      if (medalTotal > FETCH_LIMIT)
+        truncated.push(`Medals (showing ${FETCH_LIMIT} of ${medalTotal})`);
+
+      setTruncationInfo(truncated.length > 0 ? truncated : null);
 
       const rows = [
         ...normalizeEnrollments(enrollData),
@@ -439,11 +444,21 @@ export default function HistoryPage() {
         }
       />
 
-      {dataTruncated && !loading && (
-        <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-sm text-amber-600 dark:text-amber-400">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          Showing the most recent {FETCH_LIMIT} records per category. Some older
-          records may not be displayed.
+      {/* Fix 7: show per-category truncation details instead of a generic message */}
+      {truncationInfo && !loading && (
+        <div className="flex flex-col gap-1 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-sm text-amber-600 dark:text-amber-400">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span className="font-medium">
+              Some older records are not shown (limit: {FETCH_LIMIT} per
+              category):
+            </span>
+          </div>
+          <ul className="ml-6 list-disc text-xs space-y-0.5">
+            {truncationInfo.map((info) => (
+              <li key={info}>{info}</li>
+            ))}
+          </ul>
         </div>
       )}
 

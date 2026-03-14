@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   FileText,
   RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -33,9 +34,10 @@ import teacherActionService from "@/services/teacherActionService";
 import driveService from "@/services/driveService";
 import { toast } from "sonner";
 
+// Fix 7: cap constant — shown to user if data is truncated
+const FETCH_LIMIT = 200;
+
 // ── Font config ──────────────────────────────────────────────
-// Fonts are served from /public/fonts/ — no external network request needed,
-// so they work in production regardless of CSP restrictions.
 const FONT_URLS = {
   playfair: "/fonts/PlayfairDisplay-Bold.ttf",
   montserrat: "/fonts/Montserrat-Bold.ttf",
@@ -56,7 +58,6 @@ const fetchFontAsBase64 = async (name, url) => {
   let binary = "";
   for (let i = 0; i < bytes.byteLength; i++)
     binary += String.fromCharCode(bytes[i]);
-  // TTF files use data:font/truetype
   const base64 = `data:font/truetype;base64,${btoa(binary)}`;
   fontBase64Cache[name] = base64;
   return base64;
@@ -463,8 +464,10 @@ function CertificateCombobox({ value, onChange, certificates, loading }) {
 function SinglePrintTab({
   enrollments,
   loadingEnrollments,
+  enrollmentsTruncated,
   certificates,
   loadingCertificates,
+  certificatesTruncated,
 }) {
   const navigate = useNavigate();
 
@@ -613,6 +616,21 @@ function SinglePrintTab({
           <CardTitle className="text-sm">Certificate Data</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Fix 7: warn if list is truncated */}
+          {!isReprint && enrollmentsTruncated && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              Showing only the latest {FETCH_LIMIT} enrollments. Use search if
+              your student isn't listed.
+            </div>
+          )}
+          {isReprint && certificatesTruncated && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              Showing only the latest {FETCH_LIMIT} certificates.
+            </div>
+          )}
+
           <div className="flex items-center gap-2.5 p-3 rounded-lg border border-border bg-muted/30">
             <Checkbox
               id="reprint-toggle"
@@ -795,6 +813,7 @@ function SinglePrintTab({
 function BatchPrintTab({
   enrollments,
   loadingEnrollments,
+  enrollmentsTruncated,
   ptcDate,
   setPtcDate,
   moduleColorKey,
@@ -988,6 +1007,15 @@ function BatchPrintTab({
 
   return (
     <div className="space-y-5 max-w-xl">
+      {/* Fix 7: warn about truncated enrollment list in batch mode too */}
+      {enrollmentsTruncated && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          Showing only the latest {FETCH_LIMIT} enrollments. If a student is
+          missing, ask admin to check their enrollment status.
+        </div>
+      )}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">Shared Settings</CardTitle>
@@ -1078,9 +1106,11 @@ function BatchPrintTab({
 export default function PrintPage() {
   const [enrollments, setEnrollments] = useState([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
+  const [enrollmentsTruncated, setEnrollmentsTruncated] = useState(false);
 
   const [certificates, setCertificates] = useState([]);
   const [loadingCertificates, setLoadingCertificates] = useState(true);
+  const [certificatesTruncated, setCertificatesTruncated] = useState(false);
 
   const [activeTab, setActiveTab] = useState("single");
   const [batchPtcDate, setBatchPtcDate] = useState("");
@@ -1092,8 +1122,13 @@ export default function PrintPage() {
   const fetchEnrollments = useCallback(async () => {
     setLoadingEnrollments(true);
     try {
-      const res = await teacherActionService.getEnrollments({ limit: 200 });
+      const res = await teacherActionService.getEnrollments({
+        limit: FETCH_LIMIT,
+      });
       setEnrollments(res.data ?? []);
+      // Fix 7: detect truncation by comparing returned count to total
+      const total = res.pagination?.total ?? 0;
+      setEnrollmentsTruncated(total > FETCH_LIMIT);
     } catch {
       toast.error("Failed to load enrollments");
     } finally {
@@ -1105,10 +1140,12 @@ export default function PrintPage() {
     setLoadingCertificates(true);
     try {
       const res = await teacherActionService.getCertificates({
-        limit: 200,
+        limit: FETCH_LIMIT,
         is_reprint: "false",
       });
       setCertificates(res.data ?? []);
+      const total = res.pagination?.total ?? 0;
+      setCertificatesTruncated(total > FETCH_LIMIT);
     } catch {
       toast.error("Failed to load certificates");
     } finally {
@@ -1148,14 +1185,17 @@ export default function PrintPage() {
           <SinglePrintTab
             enrollments={enrollments}
             loadingEnrollments={loadingEnrollments}
+            enrollmentsTruncated={enrollmentsTruncated}
             certificates={certificates}
             loadingCertificates={loadingCertificates}
+            certificatesTruncated={certificatesTruncated}
           />
         </TabsContent>
         <TabsContent value="batch" className="mt-4">
           <BatchPrintTab
             enrollments={enrollments}
             loadingEnrollments={loadingEnrollments}
+            enrollmentsTruncated={enrollmentsTruncated}
             ptcDate={batchPtcDate}
             setPtcDate={setBatchPtcDate}
             moduleColorKey={batchModuleColorKey}
