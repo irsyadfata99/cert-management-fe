@@ -39,6 +39,12 @@ import driveService from "@/services/driveService";
 import { formatMonth } from "@/utils/formatDate";
 import { toast } from "sonner";
 
+// ── Helpers ───────────────────────────────────────────────────
+const formatCertId = (num) => {
+  if (num == null) return "—";
+  return `CERT-${String(num).padStart(6, "0")}`;
+};
+
 function SummaryCard({
   icon: Icon,
   label,
@@ -79,6 +85,12 @@ function SummaryCard({
 
 function StockCard({ s, delay }) {
   const hasAlert = s.cert_low_stock || s.medal_low_stock;
+  const hasBatch = s.cert_range_start != null;
+  const certAvailable = s.cert_quantity ?? 0;
+  const certTotal = hasBatch ? s.cert_range_end - s.cert_range_start + 1 : 0;
+  const certProgress =
+    certTotal > 0 ? ((certTotal - certAvailable) / certTotal) * 100 : 0;
+
   return (
     <Card
       className="glass-card border-0 animate-fade-in-up"
@@ -97,8 +109,9 @@ function StockCard({ s, delay }) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
+      <CardContent className="space-y-4">
+        {/* Certificate */}
+        <div className="space-y-2">
           <div className="flex items-center gap-1.5">
             <Award
               className="w-4 h-4"
@@ -107,21 +120,62 @@ function StockCard({ s, delay }) {
               }}
             />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Cert Stock
+              Certificate
             </p>
           </div>
-          <p className="text-3xl font-bold text-foreground">
-            {s.cert_quantity}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Threshold: {s.cert_threshold}
-          </p>
+
+          {hasBatch ? (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-3xl font-bold text-foreground">
+                  {certAvailable}
+                </p>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {formatCertId(s.cert_range_start)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">s/d</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {formatCertId(s.cert_range_end)}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${certProgress}%`,
+                      background: s.cert_low_stock
+                        ? "hsl(0,84%,60%)"
+                        : "hsl(144,79%,50%)",
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Next:{" "}
+                  <span className="font-mono font-medium text-primary">
+                    {formatCertId(s.cert_current_position)}
+                  </span>
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-md bg-muted/30 px-3 py-2 text-center">
+              <p className="text-xs text-muted-foreground">Belum ada batch</p>
+            </div>
+          )}
+
           {s.cert_low_stock && (
             <p className="text-xs text-destructive flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" /> Low stock
             </p>
           )}
         </div>
+
+        <div className="border-t border-border" />
+
+        {/* Medal */}
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
             <Award
@@ -131,7 +185,7 @@ function StockCard({ s, delay }) {
               }}
             />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Medal Stock
+              Medal
             </p>
           </div>
           <p className="text-3xl font-bold text-foreground">
@@ -203,7 +257,7 @@ export default function AdminDashboard() {
         moduleService.getAll({ limit: 1 }),
         monitoringService.getAdminActivity(),
         monitoringService.getAdminUploadStatus({ limit: 100 }),
-        driveService.getStock(),
+        driveService.getAdminStock(),
       ]);
 
       setCounts({

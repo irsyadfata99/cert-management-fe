@@ -1,17 +1,35 @@
 import api from "./api";
 
 const driveService = {
-  // ── Stock (admin & super_admin) ──
+  // ── Stock Overview (admin & super_admin) ──
   getStock: () => api.get("/drive/stock").then((r) => r.data),
 
-  // [NEW] Get all centers stock — accessible by admin & super_admin
+  // Get all centers stock — accessible by admin & super_admin
   getAdminStock: () => api.get("/admin/stock").then((r) => r.data),
 
-  addStock: (data) => api.post("/drive/stock/add", data).then((r) => r.data),
+  // ── Certificate Batch ──
+  getCertificateBatch: (centerId) =>
+    api.get(`/drive/stock/batch/${centerId}`).then((r) => r.data),
 
-  transferStock: (data) =>
-    api.post("/drive/stock/transfer", data).then((r) => r.data),
+  addCertificateBatch: (data) =>
+    api.post("/drive/stock/certificate/add", data).then((r) => r.data),
 
+  transferCertificateBatch: (data) =>
+    api.post("/drive/stock/certificate/transfer", data).then((r) => r.data),
+
+  previewCertificateTransfer: (params) =>
+    api
+      .get("/drive/stock/certificate/transfer/preview", { params })
+      .then((r) => r.data),
+
+  // ── Medal Stock ──
+  addMedalStock: (data) =>
+    api.post("/drive/stock/medal/add", data).then((r) => r.data),
+
+  transferMedalStock: (data) =>
+    api.post("/drive/stock/medal/transfer", data).then((r) => r.data),
+
+  // ── Threshold ──
   updateThreshold: (data) =>
     api.patch("/drive/stock/threshold", data).then((r) => r.data),
 
@@ -40,8 +58,6 @@ const driveService = {
       .then((r) => r.data);
   },
 
-  // ── Download report PDF (for re-print) ──
-  // Returns a Blob — open in new tab so user can print from PDF viewer
   downloadReport: (reportId) =>
     api
       .get(`/drive/reports/${reportId}/download`, { responseType: "blob" })

@@ -28,6 +28,12 @@ import driveService from "@/services/driveService";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 
+// ── Helpers ───────────────────────────────────────────────────
+const formatCertId = (num) => {
+  if (num == null) return "—";
+  return `CERT-${String(num).padStart(6, "0")}`;
+};
+
 // ── Summary Card ─────────────────────────────────────────────
 function SummaryCard({ title, value, icon: Icon, loading, sub, warning }) {
   return (
@@ -70,43 +76,78 @@ function StockCard({ stock, loading }) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold">Stock Info</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {loading ? (
           <LoadingSkeleton rows={2} />
         ) : stocks.length === 0 ? (
           <p className="text-sm text-muted-foreground">No stock data</p>
         ) : (
-          stocks.map((s) => (
-            <div key={s.center_id} className="space-y-1.5">
-              {stocks.length > 1 && (
-                <p className="text-xs font-medium text-muted-foreground">
-                  {s.center_name}
-                </p>
-              )}
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Certificate</span>
-                <span
-                  className={`font-semibold tabular-nums ${s.cert_low_stock ? "text-amber-500" : ""}`}
-                >
-                  {s.cert_quantity}
-                  {s.cert_low_stock && (
-                    <AlertTriangle className="inline w-3 h-3 ml-1" />
+          stocks.map((s) => {
+            const hasBatch = s.cert_range_start != null;
+            const certAvailable = s.cert_quantity ?? 0;
+
+            return (
+              <div key={s.center_id} className="space-y-2">
+                {stocks.length > 1 && (
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {s.center_name}
+                  </p>
+                )}
+
+                {/* Certificate Stock */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Certificate</span>
+                    <span
+                      className={`font-semibold tabular-nums ${s.cert_low_stock ? "text-amber-500" : ""}`}
+                    >
+                      {certAvailable}
+                      {s.cert_low_stock && (
+                        <AlertTriangle className="inline w-3 h-3 ml-1" />
+                      )}
+                    </span>
+                  </div>
+
+                  {hasBatch ? (
+                    <div className="rounded-md bg-muted/30 px-2.5 py-2 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Range</span>
+                        <span className="font-mono text-foreground">
+                          {formatCertId(s.cert_range_start)} —{" "}
+                          {formatCertId(s.cert_range_end)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          Next assign
+                        </span>
+                        <span className="font-mono font-medium text-primary">
+                          {formatCertId(s.cert_current_position)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-500">
+                      Belum ada batch. Hubungi admin.
+                    </p>
                   )}
-                </span>
+                </div>
+
+                {/* Medal Stock */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Medal</span>
+                  <span
+                    className={`font-semibold tabular-nums ${s.medal_low_stock ? "text-amber-500" : ""}`}
+                  >
+                    {s.medal_quantity}
+                    {s.medal_low_stock && (
+                      <AlertTriangle className="inline w-3 h-3 ml-1" />
+                    )}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Medal</span>
-                <span
-                  className={`font-semibold tabular-nums ${s.medal_low_stock ? "text-amber-500" : ""}`}
-                >
-                  {s.medal_quantity}
-                  {s.medal_low_stock && (
-                    <AlertTriangle className="inline w-3 h-3 ml-1" />
-                  )}
-                </span>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>
@@ -189,7 +230,7 @@ function ActivityChart({ data, loading }) {
   );
 }
 
-// ── Recent Certificates Card ─────────────────────────────────
+// ── Recent Certificates ──────────────────────────────────────
 function RecentCertificates({ certificates, loading }) {
   return (
     <Card>
@@ -220,6 +261,9 @@ function RecentCertificates({ certificates, loading }) {
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
                     {c.module_name}
+                  </p>
+                  <p className="text-xs font-mono text-muted-foreground">
+                    {c.cert_unique_id}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {formatDate(c.printed_at)}
@@ -281,33 +325,26 @@ export default function TeacherDashboardPage() {
         }),
       ]);
 
-      if (enrollRes.status === "fulfilled") {
+      if (enrollRes.status === "fulfilled")
         setTotal((t) => ({
           ...t,
           enrollments: enrollRes.value.pagination?.total ?? 0,
         }));
-      }
-      if (certsRes.status === "fulfilled") {
+      if (certsRes.status === "fulfilled")
         setTotal((t) => ({
           ...t,
           certs: certsRes.value.pagination?.total ?? 0,
         }));
-      }
-      if (reportsRes.status === "fulfilled") {
+      if (reportsRes.status === "fulfilled")
         setTotal((t) => ({
           ...t,
           reports: reportsRes.value.pagination?.total ?? 0,
         }));
-      }
-      if (activityRes.status === "fulfilled") {
+      if (activityRes.status === "fulfilled")
         setActivity(activityRes.value.data ?? []);
-      }
-      if (stockRes.status === "fulfilled") {
-        setStock(stockRes.value.data);
-      }
-      if (recentCertsRes.status === "fulfilled") {
+      if (stockRes.status === "fulfilled") setStock(stockRes.value.data);
+      if (recentCertsRes.status === "fulfilled")
         setCertificates(recentCertsRes.value.data ?? []);
-      }
     } catch {
       toast.error("Failed to load dashboard");
     } finally {
@@ -324,7 +361,6 @@ export default function TeacherDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Dashboard</h1>
@@ -345,7 +381,6 @@ export default function TeacherDashboardPage() {
         </Button>
       </div>
 
-      {/* Summary Cards + Stock */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
           title="Active Enrollments"
@@ -368,9 +403,7 @@ export default function TeacherDashboardPage() {
         <StockCard stock={stock} loading={loading} />
       </div>
 
-      {/* Chart + Recent Certificates */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Chart */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">
@@ -381,8 +414,6 @@ export default function TeacherDashboardPage() {
             <ActivityChart data={activity} loading={loading} />
           </CardContent>
         </Card>
-
-        {/* Recent Certificates */}
         <RecentCertificates certificates={certificates} loading={loading} />
       </div>
     </div>
