@@ -23,6 +23,27 @@ const teacherService = {
     api.delete(`/admin/teachers/${id}/centers/${centerId}`).then((r) => r.data),
 
   getActivity: () => api.get("/teacher/activity").then((r) => r.data),
+
+  // Import
+  downloadTemplate: () =>
+    api.get("/admin/teachers/template", { responseType: "blob" }).then((r) => {
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "teachers_template.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    }),
+
+  importExcel: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api
+      .post("/admin/teachers/import", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
 };
 
 export default teacherService;

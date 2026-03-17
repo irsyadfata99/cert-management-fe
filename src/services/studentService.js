@@ -13,6 +13,27 @@ const studentService = {
 
   deactivate: (id) =>
     api.patch(`/admin/students/${id}/deactivate`).then((r) => r.data),
+
+  // Import
+  downloadTemplate: () =>
+    api.get("/admin/students/template", { responseType: "blob" }).then((r) => {
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "students_template.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    }),
+
+  importExcel: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api
+      .post("/admin/students/import", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
 };
 
 export default studentService;
