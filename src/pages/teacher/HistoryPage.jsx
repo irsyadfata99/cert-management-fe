@@ -5,6 +5,7 @@ import {
   Download,
   AlertTriangle,
   PenLine,
+  Loader2,
 } from "lucide-react";
 import {
   Card,
@@ -114,128 +115,173 @@ function DownloadReportButton({ row }) {
   );
 }
 
-// ── Continue Draft Button ────────────────────────────────────
-function ContinueDraftButton({ row }) {
+// ── Continue Draft Button (FIXED) ────────────────────────────
+function ContinueDraftButton({ row, allEnrollments }) {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
   if (row.type !== "report" || row.status !== "draft") return null;
 
-  const handleContinue = () => {
-    navigate("/teacher/final-report", {
-      state: {
-        enrollment: {
-          enrollment_id: row._raw?.enrollment_id,
-          student_name: row.student_name,
-          module_name: row.module_name,
-          center_name: row._raw?.center_name ?? "",
-        },
-      },
-    });
+  const handleContinue = async () => {
+    setLoading(true);
+    try {
+      const moduleName = row.module_name;
+
+      const sameModuleEnrollments = allEnrollments.filter(
+        (e) =>
+          e.module_name === moduleName &&
+          (e.enrollment_status === "scan_uploaded" ||
+            e.enrollment_status === "report_drafted" ||
+            e.enrollment_status === "cert_printed"),
+      );
+
+      const enrollmentItems = sameModuleEnrollments.map((e) => ({
+        enrollment_id: e.enrollment_id,
+        student_name: e.student_name,
+        module_name: e.module_name,
+        center_name: e.center_name ?? "",
+      }));
+
+      if (enrollmentItems.length === 0) {
+        navigate("/teacher/final-report", {
+          state: {
+            enrollment: {
+              enrollment_id: row._raw?.enrollment_id,
+              student_name: row.student_name,
+              module_name: row.module_name,
+              center_name: row._raw?.center_name ?? "",
+            },
+          },
+        });
+        return;
+      }
+
+      if (enrollmentItems.length === 1) {
+        navigate("/teacher/final-report", {
+          state: { enrollment: enrollmentItems[0] },
+        });
+      } else {
+        navigate("/teacher/final-report", {
+          state: { enrollments: enrollmentItems },
+        });
+      }
+    } catch (err) {
+      toast.error("Gagal memuat data enrollment");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <button
       onClick={handleContinue}
-      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-colors"
+      disabled={loading}
+      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-colors disabled:opacity-60"
       style={{
         borderColor: "hsl(219,79%,66%)",
         color: "hsl(219,79%,66%)",
         background: "transparent",
       }}
-      title="Continue editing this draft"
+      title="Lanjutkan mengisi draft laporan"
     >
-      <PenLine className="w-3 h-3" />
-      Continue Draft
+      {loading ? (
+        <Loader2 className="w-3 h-3 animate-spin" />
+      ) : (
+        <PenLine className="w-3 h-3" />
+      )}
+      {loading ? "Memuat..." : "Continue Draft"}
     </button>
   );
 }
 
-// ── Actions cell — show both buttons if applicable ───────────
-function ActionCell({ row }) {
-  return (
-    <div className="flex items-center gap-2">
-      <ContinueDraftButton row={row} />
-      <DownloadReportButton row={row} />
-    </div>
-  );
-}
-
-// ── Columns ──────────────────────────────────────────────────
-const columns = [
-  {
-    header: "Type",
-    accessorKey: "type",
-    cell: ({ row }) => {
-      const t = TYPE_LABELS[row.original.type] ?? {
-        label: row.original.type,
-        color: "hsl(var(--muted-foreground))",
-      };
-      return (
-        <span
-          className="inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full"
-          style={{ background: t.color + "20", color: t.color }}
-        >
+// ── Actions cell ─────────────────────────────────────────────
+function makeColumns(allEnrollments) {
+  return [
+    {
+      header: "Type",
+      accessorKey: "type",
+      cell: ({ row }) => {
+        const t = TYPE_LABELS[row.original.type] ?? {
+          label: row.original.type,
+          color: "hsl(var(--muted-foreground))",
+        };
+        return (
           <span
-            className="w-1.5 h-1.5 rounded-full shrink-0"
-            style={{ background: t.color }}
-          />
-          {t.label}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: t.color + "20", color: t.color }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: t.color }}
+            />
+            {t.label}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Student",
+      accessorKey: "student_name",
+      cell: ({ row }) => (
+        <span className="text-sm font-medium text-foreground">
+          {row.original.student_name ?? "—"}
         </span>
-      );
+      ),
     },
-  },
-  {
-    header: "Student",
-    accessorKey: "student_name",
-    cell: ({ row }) => (
-      <span className="text-sm font-medium text-foreground">
-        {row.original.student_name ?? "—"}
-      </span>
-    ),
-  },
-  {
-    header: "Module",
-    accessorKey: "module_name",
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.module_name ?? "—"}
-      </span>
-    ),
-  },
-  {
-    header: "Detail",
-    accessorKey: "detail",
-    cell: ({ row }) => (
-      <span className="text-xs text-muted-foreground">
-        {row.original.detail ?? "—"}
-      </span>
-    ),
-  },
-  {
-    header: "Status",
-    accessorKey: "status",
-    cell: ({ row }) => {
-      const s = STATUS_MAP[row.original.status] ?? {
-        label: row.original.status ?? "—",
-        variant: "outline",
-      };
-      return <StatusBadge label={s.label} variant={s.variant} dot />;
+    {
+      header: "Module",
+      accessorKey: "module_name",
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.module_name ?? "—"}
+        </span>
+      ),
     },
-  },
-  {
-    header: "Date",
-    accessorKey: "date",
-    cell: ({ row }) => (
-      <span className="text-xs text-muted-foreground tabular-nums">
-        {formatDate(row.original.date)}
-      </span>
-    ),
-  },
-  {
-    header: "Actions",
-    accessorKey: "actions",
-    cell: ({ row }) => <ActionCell row={row.original} />,
-  },
-];
+    {
+      header: "Detail",
+      accessorKey: "detail",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">
+          {row.original.detail ?? "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Status",
+      accessorKey: "status",
+      cell: ({ row }) => {
+        const s = STATUS_MAP[row.original.status] ?? {
+          label: row.original.status ?? "—",
+          variant: "outline",
+        };
+        return <StatusBadge label={s.label} variant={s.variant} dot />;
+      },
+    },
+    {
+      header: "Date",
+      accessorKey: "date",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {formatDate(row.original.date)}
+        </span>
+      ),
+    },
+    {
+      header: "Actions",
+      accessorKey: "actions",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <ContinueDraftButton
+            row={row.original}
+            allEnrollments={allEnrollments}
+          />
+          <DownloadReportButton row={row.original} />
+        </div>
+      ),
+    },
+  ];
+}
 
 // ── Normalize ────────────────────────────────────────────────
 const normalizeEnrollments = (data) =>
@@ -319,6 +365,8 @@ export default function HistoryPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [truncationInfo, setTruncationInfo] = useState(null);
 
+  const [rawEnrollments, setRawEnrollments] = useState([]);
+
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -337,7 +385,10 @@ export default function HistoryPage() {
 
     try {
       const [enrollRes, certRes, reportRes, medalRes] = await Promise.all([
-        teacherActionService.getEnrollments({ limit: FETCH_LIMIT }),
+        teacherActionService.getEnrollments({
+          limit: FETCH_LIMIT,
+          include_inactive: "true",
+        }),
         teacherActionService.getCertificates({ limit: FETCH_LIMIT }),
         teacherActionService.getReports({ limit: FETCH_LIMIT }),
         teacherActionService.getMedals({ limit: FETCH_LIMIT }),
@@ -347,6 +398,8 @@ export default function HistoryPage() {
       const certData = certRes.data ?? [];
       const reportData = reportRes.data ?? [];
       const medalData = medalRes.data ?? [];
+
+      setRawEnrollments(enrollData);
 
       const enrollTotal = enrollRes.pagination?.total ?? 0;
       const certTotal = certRes.pagination?.total ?? 0;
@@ -441,9 +494,10 @@ export default function HistoryPage() {
     return counts;
   }, [allRows]);
 
+  const columns = useMemo(() => makeColumns(rawEnrollments), [rawEnrollments]);
+
   const handleExport = () => {
     if (filteredRows.length === 0) return;
-
     const headers = ["Type", "Student", "Module", "Detail", "Status", "Date"];
     const rows = filteredRows.map((r) => [
       r.type,
@@ -453,14 +507,12 @@ export default function HistoryPage() {
       r.status ?? "",
       r.date ? new Date(r.date).toISOString().split("T")[0] : "",
     ]);
-
     const escape = (v) => {
       const s = String(v);
       return s.includes(",") || s.includes('"')
         ? `"${s.replace(/"/g, '""')}"`
         : s;
     };
-
     const csv = [headers, ...rows]
       .map((r) => r.map(escape).join(","))
       .join("\n");

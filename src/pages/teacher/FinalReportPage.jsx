@@ -94,7 +94,7 @@ const SCORE_BAR_WIDTH = {
 };
 
 const MIN_WORD_COUNT = 120;
-const MAX_WORD_COUNT = 275;
+const MAX_WORD_COUNT = 200;
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 
 const MONTHS = [
