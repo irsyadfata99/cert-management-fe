@@ -110,7 +110,6 @@ function StockCard({ s, delay }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Certificate */}
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
             <Award
@@ -123,7 +122,6 @@ function StockCard({ s, delay }) {
               Certificate
             </p>
           </div>
-
           {hasBatch ? (
             <>
               <div className="flex items-center justify-between">
@@ -165,17 +163,13 @@ function StockCard({ s, delay }) {
               <p className="text-xs text-muted-foreground">Belum ada batch</p>
             </div>
           )}
-
           {s.cert_low_stock && (
             <p className="text-xs text-destructive flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" /> Low stock
             </p>
           )}
         </div>
-
         <div className="border-t border-border" />
-
-        {/* Medal */}
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
             <Award
@@ -300,6 +294,7 @@ export default function AdminDashboard() {
     return Object.values(grouped).slice(0, 6).reverse();
   }, [activity]);
 
+  // fix: "cert_printed" instead of "printed" to match backend vw_teacher_upload_status
   const uploadSummary = useMemo(
     () => ({
       complete: uploadStatus.filter((u) => u.upload_status === "complete")
@@ -310,7 +305,9 @@ export default function AdminDashboard() {
       scan_uploaded: uploadStatus.filter(
         (u) => u.upload_status === "scan_uploaded",
       ).length,
-      printed: uploadStatus.filter((u) => u.upload_status === "printed").length,
+      cert_printed: uploadStatus.filter(
+        (u) => u.upload_status === "cert_printed",
+      ).length, // fix: was "printed"
       not_started: uploadStatus.filter((u) => u.upload_status === "not_started")
         .length,
     }),
@@ -531,6 +528,7 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <>
+                {/* fix: "cert_printed" key instead of "printed" */}
                 {[
                   {
                     label: "Complete",
@@ -548,10 +546,10 @@ export default function AdminDashboard() {
                     color: "hsl(38,92%,60%)",
                   },
                   {
-                    label: "Printed",
-                    value: uploadSummary.printed,
+                    label: "Cert Printed",
+                    value: uploadSummary.cert_printed,
                     color: "hsl(280,79%,66%)",
-                  },
+                  }, // fix: was "Printed" with key "printed"
                   {
                     label: "Not Started",
                     value: uploadSummary.not_started,

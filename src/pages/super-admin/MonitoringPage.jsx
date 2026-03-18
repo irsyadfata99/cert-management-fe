@@ -70,6 +70,15 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 // ── Upload status columns ───────────────────────────────────
+// fix: map "cert_printed" (actual backend value) instead of "printed"
+const UPLOAD_STATUS_MAP = {
+  complete: { label: "Complete", variant: "success" },
+  report_drafted: { label: "Report Drafted", variant: "info" },
+  scan_uploaded: { label: "Scan Uploaded", variant: "info" },
+  cert_printed: { label: "Cert Printed", variant: "secondary" }, // fix: was "printed"
+  not_started: { label: "Not Started", variant: "outline" },
+};
+
 const uploadColumns = [
   {
     header: "Teacher",
@@ -114,15 +123,8 @@ const uploadColumns = [
     header: "Status",
     accessorKey: "upload_status",
     cell: ({ row }) => {
-      const map = {
-        complete: { label: "Complete", variant: "success" },
-        report_drafted: { label: "Report Drafted", variant: "info" },
-        scan_uploaded: { label: "Scan Uploaded", variant: "info" },
-        printed: { label: "Printed", variant: "secondary" },
-        not_started: { label: "Not Started", variant: "outline" },
-      };
-      const s = map[row.original.upload_status] ?? {
-        label: row.original.upload_status,
+      const s = UPLOAD_STATUS_MAP[row.original.upload_status] ?? {
+        label: row.original.upload_status ?? "—",
         variant: "outline",
       };
       return <StatusBadge label={s.label} variant={s.variant} dot />;
@@ -185,7 +187,7 @@ const stockColumns = [
   },
 ];
 
-// ── [NEW] Reprint log columns ───────────────────────────────
+// ── Reprint log columns ─────────────────────────────────────
 const reprintColumns = [
   {
     header: "Teacher",
@@ -258,27 +260,18 @@ const reprintColumns = [
 // ── Main Page ───────────────────────────────────────────────
 export default function SuperAdminMonitoringPage() {
   const [centers, setCenters] = useState([]);
-
   const [selectedCenter, setSelectedCenter] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
 
-  // Upload Status state
   const [uploadData, setUploadData] = useState([]);
   const [uploadTotal, setUploadTotal] = useState(0);
-
-  // Activity state
   const [activityData, setActivityData] = useState([]);
-
-  // Stock Alerts state
   const [stockAlerts, setStockAlerts] = useState([]);
-
-  // [NEW] Reprint state
   const [reprintData, setReprintData] = useState([]);
   const [reprintTotal, setReprintTotal] = useState(0);
   const [reprintDateFrom, setReprintDateFrom] = useState("");
   const [reprintDateTo, setReprintDateTo] = useState("");
 
-  // Loading states
   const [uploadLoading, setUploadLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(true);
   const [stockLoading, setStockLoading] = useState(true);
@@ -303,12 +296,10 @@ export default function SuperAdminMonitoringPage() {
   useEffect(() => {
     reset();
   }, [selectedCenter, selectedStatus, reset]);
-
   useEffect(() => {
     resetReprint();
   }, [selectedCenter, reprintDateFrom, reprintDateTo, resetReprint]);
 
-  // ── Fetch Upload Status ──
   const fetchUpload = useCallback(async () => {
     setUploadLoading(true);
     try {
@@ -327,7 +318,6 @@ export default function SuperAdminMonitoringPage() {
     }
   }, [page, limit, selectedCenter, selectedStatus]);
 
-  // ── Fetch Activity ──
   const fetchActivity = useCallback(async () => {
     setActivityLoading(true);
     try {
@@ -342,7 +332,6 @@ export default function SuperAdminMonitoringPage() {
     }
   }, [selectedCenter]);
 
-  // ── Fetch Stock Alerts ──
   const fetchStock = useCallback(async () => {
     setStockLoading(true);
     try {
@@ -355,7 +344,6 @@ export default function SuperAdminMonitoringPage() {
     }
   }, []);
 
-  // ── [NEW] Fetch Reprints ──
   const fetchReprints = useCallback(async () => {
     setReprintLoading(true);
     try {
@@ -406,7 +394,6 @@ export default function SuperAdminMonitoringPage() {
     toast.success("Data refreshed");
   };
 
-  // ── Chart data — now includes cert_reprinted ──
   const chartData = useMemo(() => {
     const grouped = {};
     for (const row of activityData) {
@@ -466,6 +453,8 @@ export default function SuperAdminMonitoringPage() {
             ))}
           </SelectContent>
         </Select>
+
+        {/* fix: "printed" -> "cert_printed" to match backend vw_teacher_upload_status */}
         <Select value={selectedStatus} onValueChange={setSelectedStatus}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="All Statuses" />
@@ -473,12 +462,14 @@ export default function SuperAdminMonitoringPage() {
           <SelectContent position="popper">
             <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="not_started">Not Started</SelectItem>
-            <SelectItem value="printed">Printed</SelectItem>
+            <SelectItem value="cert_printed">Cert Printed</SelectItem>{" "}
+            {/* fix: was "printed" */}
             <SelectItem value="scan_uploaded">Scan Uploaded</SelectItem>
             <SelectItem value="report_drafted">Report Drafted</SelectItem>
             <SelectItem value="complete">Complete</SelectItem>
           </SelectContent>
         </Select>
+
         {uploadTotal > 0 && (
           <span className="text-xs text-muted-foreground">
             {uploadTotal} enrollment{uploadTotal !== 1 ? "s" : ""}
@@ -486,7 +477,7 @@ export default function SuperAdminMonitoringPage() {
         )}
       </div>
 
-      {/* ── Activity Chart — now 3 series including reprint ── */}
+      {/* ── Activity Chart ── */}
       <Card className="glass-card border-0">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -540,7 +531,6 @@ export default function SuperAdminMonitoringPage() {
                       stopOpacity={0}
                     />
                   </linearGradient>
-                  {/* [NEW] Reprint gradient */}
                   <linearGradient id="reprintGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop
                       offset="5%"
@@ -599,7 +589,6 @@ export default function SuperAdminMonitoringPage() {
                   fill="url(#certGrad)"
                   strokeWidth={2}
                 />
-                {/* [NEW] Reprint area */}
                 <Area
                   type="monotone"
                   dataKey="cert_reprinted"
@@ -652,6 +641,7 @@ export default function SuperAdminMonitoringPage() {
                 <Download className="w-3.5 h-3.5 mr-1.5" />
                 Export
               </Button>
+              <Upload className="w-4 h-4 text-muted-foreground" />
             </div>
           </div>
         </CardHeader>
@@ -675,7 +665,7 @@ export default function SuperAdminMonitoringPage() {
         )}
       </Card>
 
-      {/* ── [NEW] Reprint Log ── */}
+      {/* ── Reprint Log ── */}
       <Card className="glass-card border-0">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -699,8 +689,6 @@ export default function SuperAdminMonitoringPage() {
             </Button>
           </div>
         </CardHeader>
-
-        {/* Date range filter khusus reprint */}
         <div className="px-4 pb-3 flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">From</span>
@@ -739,7 +727,6 @@ export default function SuperAdminMonitoringPage() {
             </span>
           )}
         </div>
-
         <CardContent className="p-0">
           <DataTable
             columns={reprintColumns}

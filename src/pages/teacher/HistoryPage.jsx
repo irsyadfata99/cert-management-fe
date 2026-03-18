@@ -116,6 +116,13 @@ function DownloadReportButton({ row }) {
 }
 
 // ── Continue Draft Button (FIXED) ────────────────────────────
+//
+// Fix utama:
+//  1. Filter enrollment hanya "scan_uploaded" | "report_drafted"
+//     — "cert_printed" diexclude karena scan belum diupload,
+//       sehingga teacher belum bisa membuat final report
+//  2. Batch detection: jika ada > 1 enrollment dengan module yang sama
+//     → navigate ke BatchMode agar semua student dalam batch terjangkau
 function ContinueDraftButton({ row, allEnrollments }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -127,12 +134,13 @@ function ContinueDraftButton({ row, allEnrollments }) {
     try {
       const moduleName = row.module_name;
 
+      // fix: hanya "scan_uploaded" dan "report_drafted"
+      // "cert_printed" diexclude — scan belum ada, belum bisa buat report
       const sameModuleEnrollments = allEnrollments.filter(
         (e) =>
           e.module_name === moduleName &&
           (e.enrollment_status === "scan_uploaded" ||
-            e.enrollment_status === "report_drafted" ||
-            e.enrollment_status === "cert_printed"),
+            e.enrollment_status === "report_drafted"),
       );
 
       const enrollmentItems = sameModuleEnrollments.map((e) => ({
@@ -143,6 +151,7 @@ function ContinueDraftButton({ row, allEnrollments }) {
       }));
 
       if (enrollmentItems.length === 0) {
+        // Fallback ke SingleMode dengan data dari row
         navigate("/teacher/final-report", {
           state: {
             enrollment: {
@@ -161,6 +170,7 @@ function ContinueDraftButton({ row, allEnrollments }) {
           state: { enrollment: enrollmentItems[0] },
         });
       } else {
+        // BatchMode — kirim semua enrollment dengan module yang sama
         navigate("/teacher/final-report", {
           state: { enrollments: enrollmentItems },
         });
@@ -195,7 +205,7 @@ function ContinueDraftButton({ row, allEnrollments }) {
   );
 }
 
-// ── Actions cell ─────────────────────────────────────────────
+// ── Columns factory ──────────────────────────────────────────
 function makeColumns(allEnrollments) {
   return [
     {
@@ -361,11 +371,10 @@ const STATUS_OPTIONS = [
 // ── Main Page ────────────────────────────────────────────────
 export default function HistoryPage() {
   const [allRows, setAllRows] = useState([]);
+  const [rawEnrollments, setRawEnrollments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [truncationInfo, setTruncationInfo] = useState(null);
-
-  const [rawEnrollments, setRawEnrollments] = useState([]);
 
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("all");
@@ -399,6 +408,7 @@ export default function HistoryPage() {
       const reportData = reportRes.data ?? [];
       const medalData = medalRes.data ?? [];
 
+      // simpan raw enrollment untuk ContinueDraftButton batch detection
       setRawEnrollments(enrollData);
 
       const enrollTotal = enrollRes.pagination?.total ?? 0;
@@ -417,7 +427,6 @@ export default function HistoryPage() {
         truncated.push(`Reports (showing ${FETCH_LIMIT} of ${reportTotal})`);
       if (medalTotal > FETCH_LIMIT)
         truncated.push(`Medals (showing ${FETCH_LIMIT} of ${medalTotal})`);
-
       setTruncationInfo(truncated.length > 0 ? truncated : null);
 
       const rows = [
@@ -426,7 +435,6 @@ export default function HistoryPage() {
         ...normalizeMedals(medalData),
         ...normalizeReports(reportData),
       ];
-
       rows.sort((a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0));
 
       setAllRows(rows);
@@ -545,7 +553,7 @@ export default function HistoryPage() {
         }
       />
 
-      {/* Draft reports banner */}
+      {/* Draft banner */}
       {!loading && draftCount > 0 && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-600 dark:text-blue-400">
           <div className="flex items-center gap-2">
@@ -635,7 +643,6 @@ export default function HistoryPage() {
                 className="pl-9 h-9 text-sm"
               />
             </div>
-
             <Select value={selectedType} onValueChange={setSelectedType}>
               <SelectTrigger className="w-40 h-9">
                 <SelectValue placeholder="All Types" />
@@ -648,7 +655,6 @@ export default function HistoryPage() {
                 ))}
               </SelectContent>
             </Select>
-
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
               <SelectTrigger className="w-44 h-9">
                 <SelectValue placeholder="All Statuses" />
@@ -661,21 +667,18 @@ export default function HistoryPage() {
                 ))}
               </SelectContent>
             </Select>
-
             <Input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="w-36 h-9 text-sm"
             />
-
             <Input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="w-36 h-9 text-sm"
             />
-
             {(search ||
               selectedType !== "all" ||
               selectedStatus !== "all" ||
@@ -696,7 +699,6 @@ export default function HistoryPage() {
                 Clear
               </Button>
             )}
-
             <div className="ml-auto flex items-center gap-2">
               {filteredRows.length > 0 && (
                 <span className="text-xs text-muted-foreground">
