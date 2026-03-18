@@ -117,12 +117,9 @@ function DownloadReportButton({ row }) {
 // ── Continue Draft Button ────────────────────────────────────
 function ContinueDraftButton({ row }) {
   const navigate = useNavigate();
-
-  // Only show for draft reports
   if (row.type !== "report" || row.status !== "draft") return null;
 
   const handleContinue = () => {
-    // Navigate to FinalReportPage with enrollment data from the report row
     navigate("/teacher/final-report", {
       state: {
         enrollment: {
@@ -286,8 +283,7 @@ const normalizeReports = (data) =>
     detail: r.academic_year
       ? `${r.academic_year} · ${r.period ?? ""}`.trim()
       : (r.period ?? "—"),
-    // is_draft: true → "draft", uploaded to Drive → "uploaded"
-    status: r.is_draft ? "draft" : r.drive_file_id ? "uploaded" : "draft",
+    status: r.is_draft ? "draft" : "uploaded",
     date: r.created_at,
     _raw: r,
   }));
@@ -425,7 +421,6 @@ export default function HistoryPage() {
     page * PAGE_SIZE,
   );
 
-  // Count draft reports for quick access banner
   const draftCount = useMemo(
     () =>
       allRows.filter((r) => r.type === "report" && r.status === "draft").length,

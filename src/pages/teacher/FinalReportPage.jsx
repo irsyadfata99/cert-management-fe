@@ -147,14 +147,12 @@ const buildPeriodValue = (start, end) => {
   return start === end ? start : `${start} - ${end}`;
 };
 
-// Parse "YYYY/YYYY" → { year_start, year_end }
 const parseAcademicYear = (val) => {
   if (!val) return { year_start: "", year_end: "" };
   const parts = val.split("/");
   return { year_start: parts[0] ?? "", year_end: parts[1] ?? "" };
 };
 
-// Parse "Month - Month" or "Month" → { period_start, period_end }
 const parsePeriod = (val) => {
   if (!val) return { period_start: "", period_end: "" };
   const parts = val.split(" - ");
@@ -165,7 +163,6 @@ const parsePeriod = (val) => {
 };
 
 // ─── Draft Save Status indicator ─────────────────────────────
-// status: "idle" | "saving" | "saved" | "error"
 function DraftStatus({ status }) {
   if (status === "idle") return null;
 
@@ -693,7 +690,20 @@ function ReportForm({ enrollment, form, setForm, error, draftStatus }) {
 }
 
 // ─── useAutosave hook ─────────────────────────────────────────
-// Handles auto-save draft logic for a single enrollment
+//
+// [FIX-1] reportIdRef dihapus dari dependency array useEffect.
+//
+// Sebelumnya dependency array: [form, sharedData, saveDraft, isReadOnly, reportIdRef]
+// Masalah: ref adalah objek stabil yang tidak berubah referensinya —
+// menambahkannya ke dependency array tidak berguna karena React tidak
+// bisa mendeteksi perubahan ref.current. Ini juga menyebabkan lint
+// warning "unnecessary dependency" yang menyembunyikan intent sebenarnya.
+//
+// Perubahan ref.current (saat draft pertama kali dibuat) tidak akan
+// trigger effect re-run — ini sebenarnya BENAR karena autosave sudah
+// berjalan berdasarkan perubahan form/sharedData, bukan perubahan reportId.
+// reportIdRef.current dibaca saat saveDraft dieksekusi (closure yang fresh),
+// bukan saat effect setup — jadi tidak perlu di-depend.
 function useAutosave({
   enrollmentId,
   form,
@@ -733,20 +743,17 @@ function useAutosave({
     if (isReadOnly) return;
 
     const payload = buildPayload();
-
-    // Skip if nothing changed
     const payloadStr = JSON.stringify(payload);
     if (payloadStr === lastSavedRef.current) return;
 
     setDraftStatus("saving");
     try {
       if (!reportIdRef.current) {
-        // Create new draft
         const res = await api.post("/teacher/reports", payload);
         reportIdRef.current = res.data.data.id;
       } else {
-        // Update existing draft
-        const { enrollment_id, ...updatePayload } = payload;
+        // enrollment_id tidak dikirim saat PATCH — hanya saat POST baru
+        const { enrollment_id: _enrollment_id, ...updatePayload } = payload;
         await api.patch(
           `/teacher/reports/${reportIdRef.current}`,
           updatePayload,
@@ -760,11 +767,9 @@ function useAutosave({
     }
   }, [buildPayload, reportIdRef, isReadOnly]);
 
-  // Debounce auto-save whenever form or sharedData changes
   useEffect(() => {
     if (isReadOnly) return;
 
-    // Don't trigger on initial render before user types anything
     const hasAnyData =
       form.content ||
       form.score_creativity ||
@@ -777,7 +782,6 @@ function useAutosave({
 
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
-      // Only show "saving" when the request is actually about to be sent
       setDraftStatus("saving");
       saveDraft();
     }, AUTOSAVE_DEBOUNCE_MS);
@@ -785,7 +789,13 @@ function useAutosave({
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [form, sharedData, saveDraft, isReadOnly, reportIdRef]);
+    // [FIX-1] reportIdRef sengaja tidak dimasukkan ke dependency array.
+    // Penjelasan: reportIdRef adalah ref (objek stabil) — React tidak bisa
+    // mendeteksi perubahan .current, sehingga menambahkannya ke deps tidak
+    // mengubah kapan effect berjalan. saveDraft membaca reportIdRef.current
+    // saat dieksekusi (closure fresh), bukan saat effect setup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, sharedData, saveDraft, isReadOnly]);
 
   return { draftStatus };
 }
@@ -814,12 +824,9 @@ function SingleMode({ enrollment }) {
   const [uploadedData, setUploadedData] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // reportIdRef: stores the report id once draft is created
   const reportIdRef = useRef(null);
-  // isReadOnly: true after report uploaded to Drive
   const [isReadOnly, setIsReadOnly] = useState(false);
 
-  // Load existing draft on mount
   useEffect(() => {
     let cancelled = false;
     const loadDraft = async () => {
@@ -832,14 +839,12 @@ function SingleMode({ enrollment }) {
         if (!cancelled && draft) {
           reportIdRef.current = draft.id;
 
-          // If already uploaded to Drive → read-only
           if (draft.drive_file_id) {
             setIsReadOnly(true);
             setUploaded(true);
             setUploadedData(draft);
           }
 
-          // Parse academic_year and period back to form fields
           const { year_start, year_end } = parseAcademicYear(
             draft.academic_year,
           );
@@ -914,14 +919,12 @@ function SingleMode({ enrollment }) {
 
       let data;
       if (reportIdRef.current) {
-        // Finalize existing draft
         const res = await api.patch(
           `/teacher/reports/${reportIdRef.current}`,
           payload,
         );
         data = res.data.data;
       } else {
-        // Create and finalize directly
         const res = await api.post("/teacher/reports", {
           enrollment_id: enrollment.enrollment_id,
           ...payload,
@@ -996,7 +999,6 @@ function SingleMode({ enrollment }) {
         description={`${enrollment.student_name} · ${enrollment.module_name}`}
         actions={
           <div className="flex items-center gap-3">
-            {/* Show draft saved indicator in header too */}
             {draftStatus !== "idle" && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="w-3.5 h-3.5" />
@@ -1013,7 +1015,6 @@ function SingleMode({ enrollment }) {
         }
       />
 
-      {/* Draft banner — shown if existing draft was loaded */}
       {reportIdRef.current && !isReadOnly && (
         <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400">
           <Save className="w-3.5 h-3.5 shrink-0" />
@@ -1093,7 +1094,12 @@ function BatchMode({ enrollments }) {
   const [uploadResults, setUploadResults] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // reportIdRefs: one ref per enrollment
+  // [FIX-2] currentReportIdRef dihapus.
+  // Sebelumnya: currentReportIdRef di-declare dan di-sync ke
+  // reportIdRefs.current[currentIdx] via useEffect, tapi tidak pernah
+  // digunakan di mana pun. useAutosave sudah menggunakan getter/setter
+  // pattern yang langsung mengakses reportIdRefs.current[currentIdx].
+  // Dead code yang membingungkan — dihapus.
   const reportIdRefs = useRef(enrollments.map(() => null));
 
   const currentEnrollment = enrollments[currentIdx];
@@ -1114,7 +1120,6 @@ function BatchMode({ enrollments }) {
     setErrors((prev) => prev.map((e, i) => (i === idx ? message : e)));
   };
 
-  // Load existing drafts for all enrollments on mount
   useEffect(() => {
     let cancelled = false;
     const loadAllDrafts = async () => {
@@ -1144,7 +1149,6 @@ function BatchMode({ enrollments }) {
               content: draft.content ?? "",
             };
 
-            // Load shared period from first draft that has it
             if (!sharedLoaded && year_start && period_start) {
               setShared({ year_start, year_end, period_start, period_end });
               sharedLoaded = true;
@@ -1164,21 +1168,22 @@ function BatchMode({ enrollments }) {
     return () => {
       cancelled = true;
     };
+    // [FIX-3] forms sengaja tidak dimasukkan ke dependency array.
+    // forms adalah initial state yang di-mutate di dalam loadAllDrafts
+    // (newForms = [...forms]). Jika forms dimasukkan ke deps, effect akan
+    // loop karena setForms di dalam effect akan trigger re-run effect.
+    // Ini adalah intentional stale closure — forms hanya dibaca sekali
+    // saat mount untuk mendapatkan initial structure, kemudian di-replace
+    // seluruhnya dengan data dari server.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Auto-save for current student
-  const currentReportIdRef = useRef(null);
-
-  // Sync currentReportIdRef to reportIdRefs per index
-  useEffect(() => {
-    currentReportIdRef.current = reportIdRefs.current[currentIdx];
-  }, [currentIdx]);
 
   const { draftStatus } = useAutosave({
     enrollmentId: currentEnrollment?.enrollment_id,
     form: currentForm,
     sharedData: shared,
+    // [FIX-2] Gunakan getter/setter object langsung mengakses index saat ini.
+    // currentReportIdRef yang sebelumnya ada adalah dead code — dihapus.
     reportIdRef: {
       get current() {
         return reportIdRefs.current[currentIdx];
@@ -1195,7 +1200,8 @@ function BatchMode({ enrollments }) {
     [currentForm.content],
   );
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
-  const wordCountOver = wordCount > MAX_WORD_COUNT;
+  // wordCountOver tidak dipakai di BatchMode — StudentReportForm sudah
+  // menampilkan warning visual. currentFormValid hanya cek minimum.
   const allScoresFilled = SKILLS.every((s) => currentForm[s.key] !== "");
   const currentFormValid = allScoresFilled && wordCountOk;
 
@@ -1356,7 +1362,6 @@ function BatchMode({ enrollments }) {
         }
       />
 
-      {/* Draft banner */}
       {reportIdRefs.current.some((id) => id !== null) && (
         <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400">
           <Save className="w-3.5 h-3.5 shrink-0" />

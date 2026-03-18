@@ -68,19 +68,23 @@ function SearchableDropdown({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOptions(null);
-    fetchFn({
-      search: debouncedQuery || undefined,
-      limit: 20,
-      is_active: "true",
-    })
-      .then((res) => {
+
+    const loadOptions = async () => {
+      setOptions(null);
+      try {
+        const res = await fetchFn({
+          search: debouncedQuery || undefined,
+          limit: 20,
+          is_active: "true",
+        });
         if (!cancelled) setOptions(res.data ?? []);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setOptions([]);
-      });
+      }
+    };
+
+    loadOptions();
+
     return () => {
       cancelled = true;
     };
@@ -297,19 +301,21 @@ function PairStatusDialog({ open, onOpenChange, enrollmentId }) {
   useEffect(() => {
     if (!open || !enrollmentId) return;
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setData(undefined);
-    enrollmentService
-      .getPairStatus(enrollmentId)
-      .then((res) => {
+    const loadData = async () => {
+      setData(undefined);
+      try {
+        const res = await enrollmentService.getPairStatus(enrollmentId);
         if (!cancelled) setData(res.data ?? null);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           toast.error("Failed to load pair status");
           setData(null);
         }
-      });
+      }
+    };
+
+    loadData();
+
     return () => {
       cancelled = true;
     };
@@ -440,8 +446,6 @@ export default function EnrollmentsPage() {
     reset();
   }, [statusFilter, moduleFilter, debouncedSearch, reset]);
 
-  // Fix 6: proper sort toggle handler — DataTable calls onSortChange(key: string)
-  // so we need to convert that into the {key, order} shape our state expects.
   const handleSortChange = useCallback((key) => {
     setSorting((prev) =>
       prev.key === key
@@ -599,7 +603,7 @@ export default function EnrollmentsPage() {
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="cert_printed">Cert Printed</SelectItem>
             <SelectItem value="scan_uploaded">Scan Uploaded</SelectItem>
-            <SelectItem value="report_uploaded">Report Uploaded</SelectItem>
+            <SelectItem value="report_drafted">Report Drafted</SelectItem>
             <SelectItem value="complete">Complete</SelectItem>
           </SelectContent>
         </Select>

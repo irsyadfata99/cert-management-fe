@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 // ── Upload Status badge helper ────────────────────────────────
 const UPLOAD_STATUS_MAP = {
   not_started: { label: "Not Started", variant: "outline" },
-  printed: { label: "Printed", variant: "warning" },
+  cert_printed: { label: "Cert Printed", variant: "warning" },
   scan_uploaded: { label: "Scan Uploaded", variant: "info" },
   report_drafted: { label: "Report Drafted", variant: "secondary" },
   complete: { label: "Complete", variant: "success" },
@@ -131,6 +131,11 @@ export default function AdminMonitoringPage() {
   const [uploadTotal, setUploadTotal] = useState(0);
   const [uploadLoading, setUploadLoading] = useState(true);
   const [uploadStatusFilter, setUploadStatusFilter] = useState("all");
+  const [uploadSorting, setUploadSorting] = useState({
+    key: "upload_status",
+    order: "asc",
+  });
+
   const {
     page: uploadPage,
     limit: uploadLimit,
@@ -138,10 +143,12 @@ export default function AdminMonitoringPage() {
     reset: resetUpload,
   } = usePagination(10);
 
-  // ── Activity — server-side pagination via limit/offset ──
-  // The backend returns at most 120 rows ordered by month DESC.
-  // We paginate that result client-side which is fine for ≤120 rows,
-  // but we show a clear count so the admin knows how much data is shown.
+  // [FIX-1] Sorting state untuk activity table
+  const [activitySorting, setActivitySorting] = useState({
+    key: "month",
+    order: "desc",
+  });
+
   const [activityData, setActivityData] = useState([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const {
@@ -160,12 +167,33 @@ export default function AdminMonitoringPage() {
   const [reprintLoading, setReprintLoading] = useState(true);
   const [reprintDateFrom, setReprintDateFrom] = useState("");
   const [reprintDateTo, setReprintDateTo] = useState("");
+
+  // [FIX-1] Sorting state untuk reprint table
+  const [reprintSorting, setReprintSorting] = useState({
+    key: "reprinted_at",
+    order: "desc",
+  });
+
   const {
     page: reprintPage,
     limit: reprintLimit,
     goToPage: goToReprintPage,
     reset: resetReprint,
   } = usePagination(10);
+
+  const makeSortHandler = useCallback((setSorting) => {
+    return (key) => {
+      setSorting((prev) =>
+        prev.key === key
+          ? { key, order: prev.order === "asc" ? "desc" : "asc" }
+          : { key, order: "asc" },
+      );
+    };
+  }, []);
+
+  const handleUploadSortChange = makeSortHandler(setUploadSorting);
+  const handleActivitySortChange = makeSortHandler(setActivitySorting);
+  const handleReprintSortChange = makeSortHandler(setReprintSorting);
 
   // ── Fetch Upload Status ──
   const fetchUploadStatus = useCallback(async () => {
@@ -255,6 +283,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Teacher",
       accessorKey: "teacher_name",
+      sortKey: "teacher_name",
       cell: ({ row }) => (
         <div>
           <p className="font-medium text-foreground">
@@ -269,6 +298,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Student",
       accessorKey: "student_name",
+      sortKey: "student_name",
       cell: ({ row }) => (
         <span className="text-sm text-foreground">
           {row.original.student_name}
@@ -296,6 +326,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Status",
       accessorKey: "upload_status",
+      sortKey: "upload_status",
       cell: ({ row }) => {
         const s = UPLOAD_STATUS_MAP[row.original.upload_status] ?? {
           label: row.original.upload_status,
@@ -307,6 +338,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Scan Uploaded",
       accessorKey: "scan_uploaded_at",
+      sortKey: "scan_uploaded_at",
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground tabular-nums">
           {row.original.scan_uploaded_at
@@ -318,6 +350,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Report Uploaded",
       accessorKey: "report_uploaded_at",
+      sortKey: "report_uploaded_at",
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground tabular-nums">
           {row.original.report_uploaded_at
@@ -333,6 +366,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Center",
       accessorKey: "center_name",
+      sortKey: "center_name",
       cell: ({ row }) => (
         <span className="font-medium text-foreground">
           {row.original.center_name}
@@ -342,6 +376,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Month",
       accessorKey: "month",
+      sortKey: "month",
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground tabular-nums">
           {row.original.month
@@ -405,6 +440,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Teacher",
       accessorKey: "teacher_name",
+      sortKey: "teacher_name",
       cell: ({ row }) => (
         <div>
           <p className="font-medium text-foreground text-sm">
@@ -419,6 +455,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Student",
       accessorKey: "student_name",
+      sortKey: "student_name",
       cell: ({ row }) => (
         <span className="text-sm font-medium">{row.original.student_name}</span>
       ),
@@ -453,6 +490,7 @@ export default function AdminMonitoringPage() {
     {
       header: "Reprinted At",
       accessorKey: "reprinted_at",
+      sortKey: "reprinted_at",
       cell: ({ row }) => (
         <span className="text-xs text-muted-foreground tabular-nums">
           {formatDate(row.original.reprinted_at)}
@@ -460,8 +498,6 @@ export default function AdminMonitoringPage() {
       ),
     },
   ];
-
-  // Activity is returned max 120 rows from backend, paginate client-side.
   const activityPaged = activityData.slice(
     (actPage - 1) * actLimit,
     actPage * actLimit,
@@ -547,7 +583,7 @@ export default function AdminMonitoringPage() {
             <SelectContent position="popper">
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="not_started">Not Started</SelectItem>
-              <SelectItem value="printed">Printed</SelectItem>
+              <SelectItem value="cert_printed">Cert Printed</SelectItem>
               <SelectItem value="scan_uploaded">Scan Uploaded</SelectItem>
               <SelectItem value="report_drafted">Report Drafted</SelectItem>
               <SelectItem value="complete">Complete</SelectItem>
@@ -572,6 +608,8 @@ export default function AdminMonitoringPage() {
           columns={uploadColumns}
           data={uploadData}
           loading={uploadLoading}
+          sorting={uploadSorting}
+          onSortChange={handleUploadSortChange}
           emptyTitle="No upload data found"
           emptyDescription="Try adjusting the status filter."
         />
@@ -641,11 +679,12 @@ export default function AdminMonitoringPage() {
             </span>
           )}
         </div>
-
         <DataTable
           columns={reprintColumns}
           data={reprintData}
           loading={reprintLoading}
+          sorting={reprintSorting}
+          onSortChange={handleReprintSortChange}
           emptyTitle="No reprint records found"
           emptyDescription="Belum ada reprint atau coba ubah filter tanggal."
         />
@@ -680,6 +719,8 @@ export default function AdminMonitoringPage() {
           columns={activityColumns}
           data={activityPaged}
           loading={activityLoading}
+          sorting={activitySorting}
+          onSortChange={handleActivitySortChange}
           emptyTitle="No activity data found"
           emptyDescription="Activity data will appear once certificates are issued."
         />

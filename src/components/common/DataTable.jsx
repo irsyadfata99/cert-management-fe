@@ -9,19 +9,6 @@ import { TableSkeleton } from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
 import { FileX } from "lucide-react";
 
-/**
- * DataTable — TanStack Table v8
- * Hybrid: table on desktop, card-list on mobile
- *
- * @param {Array} columns - TanStack column definitions
- * @param {Array} data
- * @param {boolean} loading
- * @param {string} emptyTitle
- * @param {string} emptyDescription
- * @param {object} sorting - { key, order: "asc"|"desc" }
- * @param {function} onSortChange - (key) => void — toggles asc/desc
- * @param {string} className
- */
 export default function DataTable({
   columns,
   data,
@@ -32,7 +19,6 @@ export default function DataTable({
   onSortChange,
   className,
 }) {
-  "use no memo";
   const table = useReactTable({
     data,
     columns,

@@ -123,12 +123,14 @@ const centerColumns = [
   },
   {
     header: "Cert Stock",
-    accessorKey: "cert_stock",
+    // [FIX] vw_stock_alerts mengembalikan cert_quantity, bukan cert_stock.
+    accessorKey: "cert_quantity",
     cell: ({ row }) => {
-      const low = row.original.cert_stock <= row.original.cert_threshold;
+      const qty = row.original.cert_quantity ?? row.original.cert_stock ?? 0;
+      const low = row.original.cert_low_stock;
       return (
         <div className="flex items-center gap-2">
-          <span className="tabular-nums">{row.original.cert_stock}</span>
+          <span className="tabular-nums">{qty}</span>
           {low && <StatusBadge label="Low" variant="destructive" dot />}
         </div>
       );
@@ -136,12 +138,14 @@ const centerColumns = [
   },
   {
     header: "Medal Stock",
-    accessorKey: "medal_stock",
+    // [FIX] vw_stock_alerts mengembalikan medal_quantity, bukan medal_stock.
+    accessorKey: "medal_quantity",
     cell: ({ row }) => {
-      const low = row.original.medal_stock <= row.original.medal_threshold;
+      const qty = row.original.medal_quantity ?? row.original.medal_stock ?? 0;
+      const low = row.original.medal_low_stock;
       return (
         <div className="flex items-center gap-2">
-          <span className="tabular-nums">{row.original.medal_stock}</span>
+          <span className="tabular-nums">{qty}</span>
           {low && <StatusBadge label="Low" variant="destructive" dot />}
         </div>
       );
@@ -185,13 +189,19 @@ const uploadColumns = [
     header: "Status",
     accessorKey: "upload_status",
     cell: ({ row }) => {
+      // [FIX] Status valid dari backend vw_enrollment_status:
+      //   'complete', 'report_drafted', 'scan_uploaded', 'cert_printed', 'not_started'
+      // Status 'partial' dan 'missing' tidak ada di backend — dihapus.
+      // Map disesuaikan dengan status aktual yang dikirim API.
       const map = {
         complete: { label: "Complete", variant: "success" },
-        partial: { label: "Partial", variant: "warning" },
-        missing: { label: "Missing", variant: "destructive" },
+        report_drafted: { label: "Report Drafted", variant: "info" },
+        scan_uploaded: { label: "Scan Uploaded", variant: "info" },
+        cert_printed: { label: "Cert Printed", variant: "secondary" },
+        not_started: { label: "Not Started", variant: "outline" },
       };
       const s = map[row.original.upload_status] ?? {
-        label: row.original.upload_status,
+        label: row.original.upload_status ?? "—",
         variant: "outline",
       };
       return <StatusBadge label={s.label} variant={s.variant} dot />;
@@ -244,16 +254,16 @@ export default function SuperAdminDashboard() {
         (s, c) => s + Number(c.student_count ?? 0),
         0,
       ),
+      // [FIX] gunakan cert_low_stock dan medal_low_stock dari vw_stock_alerts
+      // (field boolean yang sudah dihitung di DB), bukan cert_stock <= cert_threshold
+      // yang akan selalu false jika field cert_stock tidak ada (undefined <= number = false)
       lowStockCenters: centers.filter(
-        (c) =>
-          c.cert_stock <= c.cert_threshold ||
-          c.medal_stock <= c.medal_threshold,
+        (c) => c.cert_low_stock || c.medal_low_stock,
       ).length,
     }),
     [centers],
   );
 
-  // [CHANGED] Tambah cert_reprinted, rename medal_printed → medal_issued
   const chartData = useMemo(() => {
     const grouped = {};
     for (const row of activity) {
@@ -273,15 +283,64 @@ export default function SuperAdminDashboard() {
     return Object.values(grouped).slice(0, 6).reverse();
   }, [activity]);
 
+  // [FIX] uploadSummary sebelumnya menghitung 'partial' dan 'missing' yang
+  // tidak ada di backend. Status valid: 'complete', 'report_drafted',
+  // 'scan_uploaded', 'cert_printed', 'not_started'.
+  //
+  // Widget "Upload Status" di sidebar card sekarang menampilkan breakdown
+  // berdasarkan status aktual backend, bukan status fiktif.
+  // 'complete'         → enrollment sudah selesai penuh
+  // 'report_drafted'   → scan sudah diupload, laporan masih draft
+  // 'scan_uploaded'    → sertifikat sudah discan, laporan belum dibuat
+  // 'cert_printed'     → sertifikat sudah dicetak, scan belum diupload
+  // 'not_started'      → enrollment baru, belum ada aksi apapun
   const uploadSummary = useMemo(
     () => ({
       complete: uploadStatus.filter((u) => u.upload_status === "complete")
         .length,
-      partial: uploadStatus.filter((u) => u.upload_status === "partial").length,
-      missing: uploadStatus.filter((u) => u.upload_status === "missing").length,
+      report_drafted: uploadStatus.filter(
+        (u) => u.upload_status === "report_drafted",
+      ).length,
+      scan_uploaded: uploadStatus.filter(
+        (u) => u.upload_status === "scan_uploaded",
+      ).length,
+      cert_printed: uploadStatus.filter(
+        (u) => u.upload_status === "cert_printed",
+      ).length,
+      not_started: uploadStatus.filter((u) => u.upload_status === "not_started")
+        .length,
     }),
     [uploadStatus],
   );
+
+  // Hanya tampilkan status yang count-nya > 0 agar card tidak terlalu panjang
+  const uploadSummaryItems = [
+    {
+      key: "complete",
+      label: "Complete",
+      color: "hsl(144,79%,50%)",
+    },
+    {
+      key: "report_drafted",
+      label: "Report Drafted",
+      color: "hsl(219,79%,66%)",
+    },
+    {
+      key: "scan_uploaded",
+      label: "Scan Uploaded",
+      color: "hsl(38,92%,60%)",
+    },
+    {
+      key: "cert_printed",
+      label: "Cert Printed",
+      color: "hsl(280,79%,66%)",
+    },
+    {
+      key: "not_started",
+      label: "Not Started",
+      color: "hsl(0,0%,60%)",
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -394,7 +453,6 @@ export default function SuperAdminDashboard() {
                         stopOpacity={0}
                       />
                     </linearGradient>
-                    {/* [NEW] Reprint gradient */}
                     <linearGradient
                       id="reprintGradient"
                       x1="0"
@@ -459,7 +517,6 @@ export default function SuperAdminDashboard() {
                     fill="url(#certGradient)"
                     strokeWidth={2}
                   />
-                  {/* [NEW] Reprint area */}
                   <Area
                     type="monotone"
                     dataKey="cert_reprinted"
@@ -468,7 +525,6 @@ export default function SuperAdminDashboard() {
                     fill="url(#reprintGradient)"
                     strokeWidth={2}
                   />
-                  {/* [CHANGED] medal_printed → medal_issued */}
                   <Area
                     type="monotone"
                     dataKey="medal_issued"
@@ -509,25 +565,9 @@ export default function SuperAdminDashboard() {
               </div>
             ) : (
               <>
-                {[
-                  {
-                    label: "Complete",
-                    value: uploadSummary.complete,
-                    color: "hsl(144,79%,50%)",
-                  },
-                  {
-                    label: "Partial",
-                    value: uploadSummary.partial,
-                    color: "hsl(38,92%,60%)",
-                  },
-                  {
-                    label: "Missing",
-                    value: uploadSummary.missing,
-                    color: "hsl(0,84%,60%)",
-                  },
-                ].map((item) => (
+                {uploadSummaryItems.map((item) => (
                   <div
-                    key={item.label}
+                    key={item.key}
                     className="flex items-center justify-between p-3 rounded-lg bg-muted/30"
                   >
                     <div className="flex items-center gap-2">
@@ -543,17 +583,13 @@ export default function SuperAdminDashboard() {
                       variant="outline"
                       className="tabular-nums font-semibold"
                     >
-                      {item.value}
+                      {uploadSummary[item.key]}
                     </Badge>
                   </div>
                 ))}
                 <div className="pt-1 border-t border-border">
                   <p className="text-xs text-muted-foreground text-center">
-                    Total:{" "}
-                    {uploadSummary.complete +
-                      uploadSummary.partial +
-                      uploadSummary.missing}{" "}
-                    enrollments
+                    Total: {uploadStatus.length} enrollments
                   </p>
                 </div>
               </>

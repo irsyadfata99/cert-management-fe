@@ -77,17 +77,44 @@ const formatDateDisplay = (dateStr) => {
   });
 };
 
-// Normalize any date value to YYYY-MM-DD string (required by backend validator)
+// [FIX-1] toYMD diperbaiki untuk menghindari timezone off-by-one.
+//
+// MASALAH SEBELUMNYA:
+//   new Date("2024-12-01") diinterpretasi sebagai UTC midnight (00:00 UTC).
+//   Di timezone GMT+7, ini menjadi 2024-12-01 07:00 WIB — masih benar.
+//   TAPI getFullYear/getMonth/getDate membaca waktu LOCAL, bukan UTC.
+//   Sebaliknya, di timezone dengan offset negatif (misal GMT-5):
+//   UTC midnight = 2024-11-30 19:00 lokal → getDate() = 30, bukan 1.
+//   Hasilnya: tanggal di-kirim ke backend sebagai "2024-11-30" padahal
+//   seharusnya "2024-12-01" → backend validator menolak atau data salah.
+//
+// SOLUSI:
+//   Jika nilai sudah dalam format YYYY-MM-DD, gunakan langsung tanpa parsing.
+//   Ini menghilangkan keterlibatan timezone sama sekali.
+//   Jika nilai adalah ISO string (mengandung 'T'), split pada 'T' dan ambil
+//   bagian tanggal saja — hasilnya selalu YYYY-MM-DD tanpa konversi timezone.
+//   Hanya gunakan new Date() sebagai fallback terakhir untuk format lain.
 const toYMD = (val) => {
   if (!val) return null;
-  // Already YYYY-MM-DD
+
+  // Sudah YYYY-MM-DD — gunakan langsung, tidak perlu parsing sama sekali
   if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-  // ISO string or Date object
+
+  // ISO string (e.g. "2024-12-01T00:00:00.000Z") — split pada 'T'
+  // Ini timezone-safe karena kita ambil bagian date string mentah,
+  // bukan hasil konversi ke local time.
+  if (typeof val === "string" && val.includes("T")) {
+    return val.split("T")[0];
+  }
+
+  // Date object atau format lain — parse manual komponen UTC
+  // Gunakan getUTC* bukan get* agar tidak terpengaruh timezone lokal
   const d = new Date(val);
   if (isNaN(d)) return null;
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 };
 
@@ -116,7 +143,7 @@ html,body{width:297mm;height:210mm;overflow:hidden;}
 <div class="module-name">${moduleName || ""}</div>
 <div class="ptc-date">${formatPtcDate(ptcDate)}</div>
 </div>
-<script>document.fonts.ready.then(()=>{requestAnimationFrame(()=>{requestAnimationFrame(()=>{window.print();window.onafterprint=()=>window.close();});});});<\/script>
+<script>document.fonts.ready.then(()=>{requestAnimationFrame(()=>{requestAnimationFrame(()=>{window.print();window.onafterprint=()=>window.close();});});});</script>
 </body></html>`;
 
 const buildBatchPrintHTML = ({
@@ -151,7 +178,7 @@ html,body{overflow:hidden;}
 .ptc-date{position:absolute;top:172.50mm;left:73.8mm;font-family:'Montserrat',Arial,sans-serif;font-size:18pt;font-weight:700;color:#000;line-height:1;white-space:nowrap;}
 </style></head>
 <body>${pages}
-<script>document.fonts.ready.then(()=>{requestAnimationFrame(()=>{requestAnimationFrame(()=>{window.print();window.onafterprint=()=>window.close();});});});<\/script>
+<script>document.fonts.ready.then(()=>{requestAnimationFrame(()=>{requestAnimationFrame(()=>{window.print();window.onafterprint=()=>window.close();});});});</script>
 </body></html>`;
 };
 
@@ -488,30 +515,22 @@ function ScanUploadPanel({ printedItems, onAllUploaded }) {
 
 // ── Main Page ────────────────────────────────────────────────
 export default function PrintPage() {
-  const navigate = useNavigate();
-
-  // ── Data ──
   const [activeEnrollments, setActiveEnrollments] = useState([]);
   const [reprintEnrollments, setReprintEnrollments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Filters ──
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState("active");
 
-  // ── Selection ──
   const [printSelected, setPrintSelected] = useState(new Set());
   const [reprintSelected, setReprintSelected] = useState(new Set());
 
-  // ── Print settings (only used in print mode) ──
   const [ptcDate, setPtcDate] = useState("");
   const [moduleColorKey, setModuleColorKey] = useState("cornflowerblue");
 
-  // ── After print ──
   const [printing, setPrinting] = useState(false);
   const [printedItems, setPrintedItems] = useState(null);
 
-  // ── Fetch data ──
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
     try {
@@ -521,7 +540,6 @@ export default function PrintPage() {
           limit: 200,
           include_inactive: "true",
         }),
-        // Fetch all original certificates to get ptc_date & cert id per enrollment
         teacherActionService.getCertificates({
           limit: 500,
           is_reprint: "false",
@@ -533,7 +551,7 @@ export default function PrintPage() {
       const certsData = certsRes.data ?? [];
 
       // Build map: enrollment_id → { originalCertId, originalPtcDate }
-      // Normalize ptc_date to YYYY-MM-DD to satisfy backend validator
+      // [FIX-1] toYMD sekarang timezone-safe — tidak ada off-by-one lagi
       const certMap = {};
       for (const cert of certsData) {
         if (!certMap[cert.enrollment_id]) {
@@ -544,13 +562,10 @@ export default function PrintPage() {
         }
       }
 
-      // Active: only enrollments with status "pending"
       const active = activeData.filter(
         (e) => e.enrollment_status === "pending",
       );
 
-      // Reprint: already has cert, not pending
-      // Enrich with original cert data
       const seenIds = new Set();
       const reprint = allData
         .filter((e) => {
@@ -579,11 +594,15 @@ export default function PrintPage() {
     fetchEnrollments();
   }, [fetchEnrollments]);
 
-  // ── Current list based on viewMode ──
+  // Preload fonts saat komponen mount agar tidak ada jeda saat print pertama
+  useEffect(() => {
+    fetchFontAsBase64("playfair", FONT_URLS.playfair).catch(() => {});
+    fetchFontAsBase64("montserrat", FONT_URLS.montserrat).catch(() => {});
+  }, []);
+
   const currentList =
     viewMode === "active" ? activeEnrollments : reprintEnrollments;
 
-  // ── Filtered enrollments ──
   const filtered = useMemo(() => {
     if (!search) return currentList;
     const q = search.toLowerCase();
@@ -594,7 +613,6 @@ export default function PrintPage() {
     );
   }, [currentList, search]);
 
-  // ── Toggle handlers ──
   const togglePrint = (id) => {
     setPrintSelected((prev) => {
       const next = new Set(prev);
@@ -613,7 +631,6 @@ export default function PrintPage() {
     });
   };
 
-  // ── Preview: first selected enrollment ──
   const firstSelectedId =
     viewMode === "active"
       ? ([...printSelected][0] ?? null)
@@ -623,13 +640,11 @@ export default function PrintPage() {
     ? currentList.find((e) => e.enrollment_id === firstSelectedId)
     : null;
 
-  // Preview ptcDate: reprint uses originalPtcDate, print uses input
   const previewPtcDate =
     viewMode === "reprint"
       ? (previewEnrollment?.originalPtcDate ?? null)
       : ptcDate;
 
-  // ── Total selections ──
   const totalPrint = printSelected.size;
   const totalReprint = reprintSelected.size;
   const totalSelected = viewMode === "active" ? totalPrint : totalReprint;
@@ -637,7 +652,6 @@ export default function PrintPage() {
   const canPrint =
     viewMode === "active" ? totalSelected > 0 && !!ptcDate : totalSelected > 0;
 
-  // ── Print handler ──
   const handlePrint = async () => {
     if (viewMode === "active" && !ptcDate) {
       toast.error("PTC date is required");
@@ -671,11 +685,9 @@ export default function PrintPage() {
         }))
         .filter((item) => item.enrollment);
 
-      // ── API calls ──
       const resultItems = [];
 
       if (!isReprintMode) {
-        // Normal print: single or batch
         if (printItems.length === 1) {
           const response = await teacherActionService.printCert({
             enrollment_id: printItems[0].enrollment.enrollment_id,
@@ -706,7 +718,6 @@ export default function PrintPage() {
           });
         }
       } else {
-        // Reprint: use originalCertId & originalPtcDate already enriched
         for (const item of printItems) {
           const { originalCertId, originalPtcDate } = item.enrollment;
 
@@ -726,7 +737,8 @@ export default function PrintPage() {
 
           const response = await teacherActionService.reprintCert({
             original_cert_id: originalCertId,
-            ptc_date: originalPtcDate, // already normalized to YYYY-MM-DD
+            // [FIX-1] originalPtcDate sudah YYYY-MM-DD dari toYMD yang fixed
+            ptc_date: originalPtcDate,
           });
           resultItems.push({
             enrollment: item.enrollment,
@@ -736,7 +748,6 @@ export default function PrintPage() {
         }
       }
 
-      // ── Open print window ──
       const allPrintData = printItems.map((i) => ({
         studentName: i.enrollment.student_name,
         moduleName: i.enrollment.module_name,
@@ -791,7 +802,6 @@ export default function PrintPage() {
     }
   };
 
-  // ── If after-print panel is shown ──
   if (printedItems) {
     return (
       <div className="space-y-6 max-w-xl">
@@ -929,7 +939,6 @@ export default function PrintPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Center
                 </th>
-                {/* PTC Date column only in reprint mode */}
                 {viewMode === "reprint" && (
                   <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Original PTC Date
@@ -1009,7 +1018,6 @@ export default function PrintPage() {
                           {enrollment.center_name ?? "—"}
                         </span>
                       </td>
-                      {/* Original PTC Date — reprint mode only */}
                       {viewMode === "reprint" && (
                         <td className="px-4 py-3">
                           <span className="flex items-center gap-1.5 text-xs text-foreground">
@@ -1049,7 +1057,6 @@ export default function PrintPage() {
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* PTC Date: input in print mode, readonly info in reprint mode */}
           {viewMode === "active" ? (
             <div className="space-y-1.5">
               <Label htmlFor="ptc-date">
@@ -1086,7 +1093,6 @@ export default function PrintPage() {
           </div>
         </div>
 
-        {/* Info banner for reprint mode */}
         {viewMode === "reprint" && (
           <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
             <RotateCcw className="w-3.5 h-3.5 shrink-0 mt-0.5" />
