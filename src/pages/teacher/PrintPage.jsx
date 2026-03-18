@@ -6,9 +6,9 @@ import {
   CheckCircle2,
   FileText,
   RotateCcw,
-  AlertTriangle,
   Search,
   X,
+  CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -64,6 +64,31 @@ const formatPtcDate = (date) => {
       year: "numeric",
     })
     .replace(/(\d+) (\w+) (\d+)/, "$1 $2, $3");
+};
+
+const formatDateDisplay = (dateStr) => {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+};
+
+// Normalize any date value to YYYY-MM-DD string (required by backend validator)
+const toYMD = (val) => {
+  if (!val) return null;
+  // Already YYYY-MM-DD
+  if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  // ISO string or Date object
+  const d = new Date(val);
+  if (isNaN(d)) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 const buildPrintHTML = ({
@@ -433,7 +458,6 @@ function ScanUploadPanel({ printedItems, onAllUploaded }) {
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             All scans uploaded successfully.
           </div>
-          {/* Only show Final Report button for non-reprint items */}
           {printedItems.some((i) => !i.isReprint) && (
             <Button
               className="w-full"
@@ -467,21 +491,19 @@ export default function PrintPage() {
   const navigate = useNavigate();
 
   // ── Data ──
-  const [enrollments, setEnrollments] = useState([]);
+  const [activeEnrollments, setActiveEnrollments] = useState([]);
+  const [reprintEnrollments, setReprintEnrollments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // ── Filters ──
   const [search, setSearch] = useState("");
-  // "active" = pending enrollments, "reprint" = enrollments with cert
   const [viewMode, setViewMode] = useState("active");
 
   // ── Selection ──
-  // Map of enrollment_id → { type: "print" | "reprint" | "both" }
-  // We use two separate Sets for clarity
   const [printSelected, setPrintSelected] = useState(new Set());
   const [reprintSelected, setReprintSelected] = useState(new Set());
 
-  // ── Print settings ──
+  // ── Print settings (only used in print mode) ──
   const [ptcDate, setPtcDate] = useState("");
   const [moduleColorKey, setModuleColorKey] = useState("cornflowerblue");
 
@@ -493,20 +515,59 @@ export default function PrintPage() {
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch both active and inactive enrollments so reprint mode
-      // can show completed enrollments (is_active = FALSE)
-      const [activeRes, inactiveRes] = await Promise.all([
+      const [activeRes, allRes, certsRes] = await Promise.all([
         teacherActionService.getEnrollments({ limit: 200 }),
         teacherActionService.getEnrollments({
           limit: 200,
           include_inactive: "true",
         }),
+        // Fetch all original certificates to get ptc_date & cert id per enrollment
+        teacherActionService.getCertificates({
+          limit: 500,
+          is_reprint: "false",
+        }),
       ]);
-      const active = activeRes.data ?? [];
-      const inactive = (inactiveRes.data ?? []).filter(
-        (e) => !active.some((a) => a.enrollment_id === e.enrollment_id),
+
+      const activeData = activeRes.data ?? [];
+      const allData = allRes.data ?? [];
+      const certsData = certsRes.data ?? [];
+
+      // Build map: enrollment_id → { originalCertId, originalPtcDate }
+      // Normalize ptc_date to YYYY-MM-DD to satisfy backend validator
+      const certMap = {};
+      for (const cert of certsData) {
+        if (!certMap[cert.enrollment_id]) {
+          certMap[cert.enrollment_id] = {
+            originalCertId: cert.id,
+            originalPtcDate: toYMD(cert.ptc_date),
+          };
+        }
+      }
+
+      // Active: only enrollments with status "pending"
+      const active = activeData.filter(
+        (e) => e.enrollment_status === "pending",
       );
-      setEnrollments([...active, ...inactive]);
+
+      // Reprint: already has cert, not pending
+      // Enrich with original cert data
+      const seenIds = new Set();
+      const reprint = allData
+        .filter((e) => {
+          if ((e.cert_printed_count ?? 0) === 0) return false;
+          if (e.enrollment_status === "pending") return false;
+          if (seenIds.has(e.enrollment_id)) return false;
+          seenIds.add(e.enrollment_id);
+          return true;
+        })
+        .map((e) => ({
+          ...e,
+          originalCertId: certMap[e.enrollment_id]?.originalCertId ?? null,
+          originalPtcDate: certMap[e.enrollment_id]?.originalPtcDate ?? null,
+        }));
+
+      setActiveEnrollments(active);
+      setReprintEnrollments(reprint);
     } catch {
       toast.error("Failed to load enrollments");
     } finally {
@@ -518,29 +579,20 @@ export default function PrintPage() {
     fetchEnrollments();
   }, [fetchEnrollments]);
 
+  // ── Current list based on viewMode ──
+  const currentList =
+    viewMode === "active" ? activeEnrollments : reprintEnrollments;
+
   // ── Filtered enrollments ──
   const filtered = useMemo(() => {
-    return enrollments.filter((e) => {
-      // viewMode filter
-      if (viewMode === "active" && e.enrollment_status !== "pending")
-        return false;
-      if (viewMode === "reprint" && (e.cert_printed_count ?? 0) === 0)
-        return false;
-      // search filter
-      if (search) {
-        const q = search.toLowerCase();
-        if (
-          !e.student_name?.toLowerCase().includes(q) &&
-          !e.module_name?.toLowerCase().includes(q)
-        )
-          return false;
-      }
-      return true;
-    });
-  }, [enrollments, viewMode, search]);
-
-  // ── Enrollment has been printed before (cert_printed_count > 0) ──
-  const hasCert = (enrollment) => (enrollment.cert_printed_count ?? 0) > 0;
+    if (!search) return currentList;
+    const q = search.toLowerCase();
+    return currentList.filter(
+      (e) =>
+        e.student_name?.toLowerCase().includes(q) ||
+        e.module_name?.toLowerCase().includes(q),
+    );
+  }, [currentList, search]);
 
   // ── Toggle handlers ──
   const togglePrint = (id) => {
@@ -561,23 +613,33 @@ export default function PrintPage() {
     });
   };
 
-  // ── Preview: first selected enrollment (print preferred, then reprint) ──
+  // ── Preview: first selected enrollment ──
   const firstSelectedId =
-    [...printSelected][0] ?? [...reprintSelected][0] ?? null;
+    viewMode === "active"
+      ? ([...printSelected][0] ?? null)
+      : ([...reprintSelected][0] ?? null);
+
   const previewEnrollment = firstSelectedId
-    ? enrollments.find((e) => e.enrollment_id === firstSelectedId)
+    ? currentList.find((e) => e.enrollment_id === firstSelectedId)
     : null;
+
+  // Preview ptcDate: reprint uses originalPtcDate, print uses input
+  const previewPtcDate =
+    viewMode === "reprint"
+      ? (previewEnrollment?.originalPtcDate ?? null)
+      : ptcDate;
 
   // ── Total selections ──
   const totalPrint = printSelected.size;
   const totalReprint = reprintSelected.size;
-  const totalSelected = totalPrint + totalReprint;
+  const totalSelected = viewMode === "active" ? totalPrint : totalReprint;
 
-  const canPrint = totalSelected > 0 && !!ptcDate;
+  const canPrint =
+    viewMode === "active" ? totalSelected > 0 && !!ptcDate : totalSelected > 0;
 
   // ── Print handler ──
   const handlePrint = async () => {
-    if (!ptcDate) {
+    if (viewMode === "active" && !ptcDate) {
       toast.error("PTC date is required");
       return;
     }
@@ -596,86 +658,91 @@ export default function PrintPage() {
       const moduleColor =
         MODULE_COLORS[moduleColorKey]?.printValue ?? "cornflowerblue";
 
-      // Build list of items to print: prints first, then reprints
-      const printItems = [
-        ...[...printSelected].map((id) => ({
-          enrollment: enrollments.find((e) => e.enrollment_id === id),
-          isReprint: false,
-        })),
-        ...[...reprintSelected].map((id) => ({
-          enrollment: enrollments.find((e) => e.enrollment_id === id),
-          isReprint: true,
-        })),
-      ].filter((item) => item.enrollment);
+      const isReprintMode = viewMode === "reprint";
+
+      const selectedIds = isReprintMode
+        ? [...reprintSelected]
+        : [...printSelected];
+
+      const printItems = selectedIds
+        .map((id) => ({
+          enrollment: currentList.find((e) => e.enrollment_id === id),
+          isReprint: isReprintMode,
+        }))
+        .filter((item) => item.enrollment);
 
       // ── API calls ──
       const resultItems = [];
 
-      // Handle prints (single or batch)
-      const printOnlyItems = printItems.filter((i) => !i.isReprint);
-      if (printOnlyItems.length === 1) {
-        const response = await teacherActionService.printCert({
-          enrollment_id: printOnlyItems[0].enrollment.enrollment_id,
-          ptc_date: ptcDate,
-        });
-        resultItems.push({
-          enrollment: printOnlyItems[0].enrollment,
-          certId: response.data?.id,
-          isReprint: false,
-        });
-      } else if (printOnlyItems.length > 1) {
-        const response = await teacherActionService.printCertBatch({
-          items: printOnlyItems.map((i) => ({
-            enrollment_id: i.enrollment.enrollment_id,
+      if (!isReprintMode) {
+        // Normal print: single or batch
+        if (printItems.length === 1) {
+          const response = await teacherActionService.printCert({
+            enrollment_id: printItems[0].enrollment.enrollment_id,
             ptc_date: ptcDate,
-          })),
-        });
-        const certs = response?.data?.certs ?? [];
-        const certMap = Object.fromEntries(
-          certs.map((c) => [c.enrollment_id, c]),
-        );
-        printOnlyItems.forEach((i) => {
+          });
           resultItems.push({
-            enrollment: i.enrollment,
-            certId: certMap[i.enrollment.enrollment_id]?.id ?? null,
+            enrollment: printItems[0].enrollment,
+            certId: response.data?.id,
             isReprint: false,
           });
-        });
-      }
-
-      // Handle reprints one by one
-      const reprintOnlyItems = printItems.filter((i) => i.isReprint);
-      for (const item of reprintOnlyItems) {
-        // Get original cert id for this enrollment
-        const certsRes = await teacherActionService.getCertificates({
-          limit: 10,
-        });
-        const originalCert = (certsRes.data ?? []).find(
-          (c) =>
-            c.enrollment_id === item.enrollment.enrollment_id && !c.is_reprint,
-        );
-        if (!originalCert) {
-          toast.error(
-            `No original certificate found for ${item.enrollment.student_name}`,
+        } else {
+          const response = await teacherActionService.printCertBatch({
+            items: printItems.map((i) => ({
+              enrollment_id: i.enrollment.enrollment_id,
+              ptc_date: ptcDate,
+            })),
+          });
+          const certs = response?.data?.certs ?? [];
+          const certMap = Object.fromEntries(
+            certs.map((c) => [c.enrollment_id, c]),
           );
-          continue;
+          printItems.forEach((i) => {
+            resultItems.push({
+              enrollment: i.enrollment,
+              certId: certMap[i.enrollment.enrollment_id]?.id ?? null,
+              isReprint: false,
+            });
+          });
         }
-        const response = await teacherActionService.reprintCert({
-          original_cert_id: originalCert.id,
-          ptc_date: ptcDate,
-        });
-        resultItems.push({
-          enrollment: item.enrollment,
-          certId: response.data?.id,
-          isReprint: true,
-        });
+      } else {
+        // Reprint: use originalCertId & originalPtcDate already enriched
+        for (const item of printItems) {
+          const { originalCertId, originalPtcDate } = item.enrollment;
+
+          if (!originalCertId) {
+            toast.error(
+              `No original certificate found for ${item.enrollment.student_name}`,
+            );
+            continue;
+          }
+
+          if (!originalPtcDate) {
+            toast.error(
+              `Original PTC date not found for ${item.enrollment.student_name}`,
+            );
+            continue;
+          }
+
+          const response = await teacherActionService.reprintCert({
+            original_cert_id: originalCertId,
+            ptc_date: originalPtcDate, // already normalized to YYYY-MM-DD
+          });
+          resultItems.push({
+            enrollment: item.enrollment,
+            certId: response.data?.id,
+            isReprint: true,
+          });
+        }
       }
 
       // ── Open print window ──
       const allPrintData = printItems.map((i) => ({
         studentName: i.enrollment.student_name,
         moduleName: i.enrollment.module_name,
-        ptcDate,
+        ptcDate: isReprintMode
+          ? (i.enrollment.originalPtcDate ?? ptcDate)
+          : ptcDate,
       }));
 
       const printWindow = window.open("", "_blank");
@@ -689,7 +756,7 @@ export default function PrintPage() {
           buildPrintHTML({
             studentName: allPrintData[0].studentName,
             moduleName: allPrintData[0].moduleName,
-            ptcDate,
+            ptcDate: allPrintData[0].ptcDate,
             moduleColor,
             playfairBase64,
             montserratBase64,
@@ -712,8 +779,11 @@ export default function PrintPage() {
       );
 
       setPrintedItems(resultItems);
-      setPrintSelected(new Set());
-      setReprintSelected(new Set());
+      if (isReprintMode) {
+        setReprintSelected(new Set());
+      } else {
+        setPrintSelected(new Set());
+      }
     } catch (err) {
       toast.error(err?.response?.data?.message ?? "Print failed");
     } finally {
@@ -735,7 +805,10 @@ export default function PrintPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setPrintedItems(null)}
+          onClick={() => {
+            setPrintedItems(null);
+            fetchEnrollments();
+          }}
         >
           Print More
         </Button>
@@ -754,7 +827,6 @@ export default function PrintPage() {
 
       {/* ── Enrollment Table ── */}
       <div className="glass-card rounded-xl overflow-hidden">
-        {/* Table filters */}
         <div className="p-4 border-b border-border flex flex-wrap items-center gap-3">
           {/* View mode toggle */}
           <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
@@ -763,6 +835,7 @@ export default function PrintPage() {
                 setViewMode("active");
                 setPrintSelected(new Set());
                 setReprintSelected(new Set());
+                setSearch("");
               }}
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${
                 viewMode === "active"
@@ -770,13 +843,14 @@ export default function PrintPage() {
                   : "bg-background text-muted-foreground hover:text-foreground"
               }`}
             >
-              Active
+              Print
             </button>
             <button
               onClick={() => {
                 setViewMode("reprint");
                 setPrintSelected(new Set());
                 setReprintSelected(new Set());
+                setSearch("");
               }}
               className={`px-4 py-1.5 text-sm font-medium transition-colors border-l border-border ${
                 viewMode === "reprint"
@@ -810,20 +884,19 @@ export default function PrintPage() {
             )}
           </div>
 
-          {/* Selection badges + clear */}
+          {/* Selection badge + clear */}
           {totalSelected > 0 && (
             <div className="flex items-center gap-2 ml-auto">
-              {totalPrint > 0 && (
+              {viewMode === "active" ? (
                 <Badge variant="default" className="text-xs">
-                  {totalPrint} Print
+                  {totalPrint} selected
                 </Badge>
-              )}
-              {totalReprint > 0 && (
+              ) : (
                 <Badge
                   variant="outline"
                   className="text-xs text-amber-500 border-amber-500/40"
                 >
-                  {totalReprint} Reprint
+                  {totalReprint} selected
                 </Badge>
               )}
               <button
@@ -856,6 +929,12 @@ export default function PrintPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Center
                 </th>
+                {/* PTC Date column only in reprint mode */}
+                {viewMode === "reprint" && (
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Original PTC Date
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Status
                 </th>
@@ -865,7 +944,7 @@ export default function PrintPage() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={viewMode === "reprint" ? 6 : 5}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
                     Loading enrollments...
@@ -874,26 +953,27 @@ export default function PrintPage() {
               ) : filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={viewMode === "reprint" ? 6 : 5}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
-                    No pending enrollments found.
+                    {viewMode === "active"
+                      ? "No pending enrollments found."
+                      : "No printed enrollments found."}
                   </td>
                 </tr>
               ) : (
                 filtered.map((enrollment, idx) => {
                   const id = enrollment.enrollment_id;
-                  const isPrintChecked = printSelected.has(id);
-                  const isReprintChecked = reprintSelected.has(id);
+                  const isChecked =
+                    viewMode === "active"
+                      ? printSelected.has(id)
+                      : reprintSelected.has(id);
+
                   return (
                     <tr
                       key={id}
                       className={`border-b border-border last:border-0 transition-colors hover:bg-accent/30 ${
-                        (
-                          viewMode === "active"
-                            ? isPrintChecked
-                            : isReprintChecked
-                        )
+                        isChecked
                           ? viewMode === "reprint"
                             ? "bg-amber-500/5"
                             : "bg-primary/5"
@@ -902,45 +982,46 @@ export default function PrintPage() {
                             : "bg-muted/10"
                       }`}
                     >
-                      {/* Single checkbox — Print or Reprint depending on viewMode */}
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center">
-                          {viewMode === "active" ? (
-                            <Checkbox
-                              checked={isPrintChecked}
-                              onCheckedChange={() => togglePrint(id)}
-                            />
-                          ) : (
-                            <Checkbox
-                              checked={isReprintChecked}
-                              onCheckedChange={() => toggleReprint(id)}
-                            />
-                          )}
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() =>
+                              viewMode === "active"
+                                ? togglePrint(id)
+                                : toggleReprint(id)
+                            }
+                          />
                         </div>
                       </td>
-
-                      {/* Student */}
                       <td className="px-4 py-3">
                         <span className="font-medium text-foreground">
                           {enrollment.student_name}
                         </span>
                       </td>
-
-                      {/* Module */}
                       <td className="px-4 py-3">
                         <span className="text-muted-foreground">
                           {enrollment.module_name}
                         </span>
                       </td>
-
-                      {/* Center */}
                       <td className="px-4 py-3">
                         <span className="text-muted-foreground">
                           {enrollment.center_name ?? "—"}
                         </span>
                       </td>
-
-                      {/* Status */}
+                      {/* Original PTC Date — reprint mode only */}
+                      {viewMode === "reprint" && (
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-1.5 text-xs text-foreground">
+                            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            {enrollment.originalPtcDate ? (
+                              formatDateDisplay(enrollment.originalPtcDate)
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <EnrollmentStatusBadge
                           status={enrollment.enrollment_status}
@@ -968,18 +1049,34 @@ export default function PrintPage() {
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="ptc-date">
-              PTC Date <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="ptc-date"
-              type="date"
-              value={ptcDate}
-              onChange={(e) => setPtcDate(e.target.value)}
-              className="h-9"
-            />
-          </div>
+          {/* PTC Date: input in print mode, readonly info in reprint mode */}
+          {viewMode === "active" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="ptc-date">
+                PTC Date <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="ptc-date"
+                type="date"
+                value={ptcDate}
+                onChange={(e) => setPtcDate(e.target.value)}
+                className="h-9"
+              />
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>PTC Date</Label>
+              <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-muted/30 text-sm text-muted-foreground">
+                <CalendarDays className="w-4 h-4 shrink-0" />
+                <span>
+                  {previewEnrollment?.originalPtcDate
+                    ? formatDateDisplay(previewEnrollment.originalPtcDate)
+                    : "Uses original print date"}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label>Module Name Color</Label>
             <ColorSwatchPicker
@@ -988,6 +1085,16 @@ export default function PrintPage() {
             />
           </div>
         </div>
+
+        {/* Info banner for reprint mode */}
+        {viewMode === "reprint" && (
+          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+            <RotateCcw className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Reprint will use the same PTC date as the original certificate.
+            </span>
+          </div>
+        )}
 
         <Button
           className="w-full sm:w-auto"
@@ -1001,16 +1108,18 @@ export default function PrintPage() {
             </span>
           ) : (
             <span className="flex items-center gap-2">
-              {totalReprint > 0 && totalPrint === 0 ? (
+              {viewMode === "reprint" ? (
                 <RotateCcw className="w-4 h-4" />
               ) : (
                 <Printer className="w-4 h-4" />
               )}
               {totalSelected === 0
-                ? "Print Certificate"
+                ? viewMode === "reprint"
+                  ? "Reprint Certificate"
+                  : "Print Certificate"
                 : totalSelected === 1
-                  ? `Print 1 Certificate${reprintSelected.has([...reprintSelected][0]) ? " (Reprint)" : ""}`
-                  : `Print ${totalSelected} Certificates`}
+                  ? `${viewMode === "reprint" ? "Reprint" : "Print"} 1 Certificate`
+                  : `${viewMode === "reprint" ? "Reprint" : "Print"} ${totalSelected} Certificates`}
             </span>
           )}
         </Button>
@@ -1046,7 +1155,7 @@ export default function PrintPage() {
         <CertPreview
           studentName={previewEnrollment?.student_name ?? ""}
           moduleName={previewEnrollment?.module_name ?? ""}
-          ptcDate={ptcDate}
+          ptcDate={previewPtcDate}
           moduleColorKey={moduleColorKey}
         />
       </div>

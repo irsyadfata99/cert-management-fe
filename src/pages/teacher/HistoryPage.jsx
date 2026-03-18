@@ -1,5 +1,11 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { Search, RefreshCw, Download, AlertTriangle } from "lucide-react";
+import {
+  Search,
+  RefreshCw,
+  Download,
+  AlertTriangle,
+  PenLine,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -24,6 +30,7 @@ import teacherActionService from "@/services/teacherActionService";
 import driveService from "@/services/driveService";
 import { toast } from "sonner";
 import usePagination from "@/hooks/usePagination";
+import { useNavigate } from "react-router-dom";
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -44,7 +51,7 @@ const STATUS_MAP = {
   scanned: { label: "Scanned", variant: "success" },
   not_scanned: { label: "Not Scanned", variant: "outline" },
   uploaded: { label: "Uploaded", variant: "success" },
-  draft: { label: "Draft", variant: "secondary" },
+  draft: { label: "Draft", variant: "warning" },
   issued: { label: "Issued", variant: "secondary" },
 };
 
@@ -57,12 +64,10 @@ const formatDate = (val) => {
   });
 };
 
-// Fix 7: increased fetch limit and show per-category truncation info
 const FETCH_LIMIT = 100;
 const PAGE_SIZE = 15;
 
 // ── Download report handler ──────────────────────────────────
-
 function DownloadReportButton({ row }) {
   const [downloading, setDownloading] = useState(false);
   const reportId = row._raw?.id;
@@ -109,8 +114,55 @@ function DownloadReportButton({ row }) {
   );
 }
 
-// ── Columns ──────────────────────────────────────────────────
+// ── Continue Draft Button ────────────────────────────────────
+function ContinueDraftButton({ row }) {
+  const navigate = useNavigate();
 
+  // Only show for draft reports
+  if (row.type !== "report" || row.status !== "draft") return null;
+
+  const handleContinue = () => {
+    // Navigate to FinalReportPage with enrollment data from the report row
+    navigate("/teacher/final-report", {
+      state: {
+        enrollment: {
+          enrollment_id: row._raw?.enrollment_id,
+          student_name: row.student_name,
+          module_name: row.module_name,
+          center_name: row._raw?.center_name ?? "",
+        },
+      },
+    });
+  };
+
+  return (
+    <button
+      onClick={handleContinue}
+      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-colors"
+      style={{
+        borderColor: "hsl(219,79%,66%)",
+        color: "hsl(219,79%,66%)",
+        background: "transparent",
+      }}
+      title="Continue editing this draft"
+    >
+      <PenLine className="w-3 h-3" />
+      Continue Draft
+    </button>
+  );
+}
+
+// ── Actions cell — show both buttons if applicable ───────────
+function ActionCell({ row }) {
+  return (
+    <div className="flex items-center gap-2">
+      <ContinueDraftButton row={row} />
+      <DownloadReportButton row={row} />
+    </div>
+  );
+}
+
+// ── Columns ──────────────────────────────────────────────────
 const columns = [
   {
     header: "Type",
@@ -184,12 +236,11 @@ const columns = [
   {
     header: "Actions",
     accessorKey: "actions",
-    cell: ({ row }) => <DownloadReportButton row={row.original} />,
+    cell: ({ row }) => <ActionCell row={row.original} />,
   },
 ];
 
 // ── Normalize ────────────────────────────────────────────────
-
 const normalizeEnrollments = (data) =>
   data.map((e) => ({
     id: `enrollment-${e.enrollment_id}`,
@@ -235,13 +286,13 @@ const normalizeReports = (data) =>
     detail: r.academic_year
       ? `${r.academic_year} · ${r.period ?? ""}`.trim()
       : (r.period ?? "—"),
-    status: r.drive_file_id ? "uploaded" : "draft",
+    // is_draft: true → "draft", uploaded to Drive → "uploaded"
+    status: r.is_draft ? "draft" : r.drive_file_id ? "uploaded" : "draft",
     date: r.created_at,
     _raw: r,
   }));
 
 // ── Filter options ───────────────────────────────────────────
-
 const TYPE_OPTIONS = [
   { value: "all", label: "All Types" },
   { value: "enrollment", label: "Enrollment" },
@@ -266,13 +317,10 @@ const STATUS_OPTIONS = [
 ];
 
 // ── Main Page ────────────────────────────────────────────────
-
 export default function HistoryPage() {
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Fix 7: track which categories are truncated with exact totals
   const [truncationInfo, setTruncationInfo] = useState(null);
 
   const [search, setSearch] = useState("");
@@ -309,7 +357,6 @@ export default function HistoryPage() {
       const reportTotal = reportRes.pagination?.total ?? 0;
       const medalTotal = medalRes.pagination?.total ?? 0;
 
-      // Fix 7: build per-category truncation info instead of a single boolean
       const truncated = [];
       if (enrollTotal > FETCH_LIMIT)
         truncated.push(
@@ -378,6 +425,13 @@ export default function HistoryPage() {
     page * PAGE_SIZE,
   );
 
+  // Count draft reports for quick access banner
+  const draftCount = useMemo(
+    () =>
+      allRows.filter((r) => r.type === "report" && r.status === "draft").length,
+    [allRows],
+  );
+
   const summary = useMemo(() => {
     const counts = {
       enrollment: 0,
@@ -444,7 +498,28 @@ export default function HistoryPage() {
         }
       />
 
-      {/* Fix 7: show per-category truncation details instead of a generic message */}
+      {/* Draft reports banner */}
+      {!loading && draftCount > 0 && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-600 dark:text-blue-400">
+          <div className="flex items-center gap-2">
+            <PenLine className="w-4 h-4 shrink-0" />
+            <span>
+              You have <span className="font-semibold">{draftCount}</span>{" "}
+              unfinished draft report{draftCount !== 1 ? "s" : ""}.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 shrink-0"
+            onClick={() => setSelectedStatus("draft")}
+          >
+            View Drafts
+          </Button>
+        </div>
+      )}
+
+      {/* Truncation warning */}
       {truncationInfo && !loading && (
         <div className="flex flex-col gap-1 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-sm text-amber-600 dark:text-amber-400">
           <div className="flex items-center gap-2.5">

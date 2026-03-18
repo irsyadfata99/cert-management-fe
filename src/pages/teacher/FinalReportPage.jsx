@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   CalendarDays,
@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Save,
+  Clock,
 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -59,9 +61,7 @@ const printReport = async (reportId) => {
 
 const printReportsBatch = async (reportIds) => {
   for (let i = 0; i < reportIds.length; i++) {
-    if (i > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-    }
+    if (i > 0) await new Promise((resolve) => setTimeout(resolve, 800));
     await printReport(reportIds[i]);
   }
 };
@@ -94,6 +94,8 @@ const SCORE_BAR_WIDTH = {
 };
 
 const MIN_WORD_COUNT = 120;
+const MAX_WORD_COUNT = 275;
+const AUTOSAVE_DEBOUNCE_MS = 2000;
 
 const MONTHS = [
   "January",
@@ -133,7 +135,7 @@ const EMPTY_SHARED = {
 
 // ─── Helpers ─────────────────────────────────────────────────
 const countWords = (text) =>
-  text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
+  !text || text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
 
 const buildPeriodLabel = (start, end) => {
   if (!start || !end) return "—";
@@ -144,6 +146,59 @@ const buildPeriodValue = (start, end) => {
   if (!start || !end) return "";
   return start === end ? start : `${start} - ${end}`;
 };
+
+// Parse "YYYY/YYYY" → { year_start, year_end }
+const parseAcademicYear = (val) => {
+  if (!val) return { year_start: "", year_end: "" };
+  const parts = val.split("/");
+  return { year_start: parts[0] ?? "", year_end: parts[1] ?? "" };
+};
+
+// Parse "Month - Month" or "Month" → { period_start, period_end }
+const parsePeriod = (val) => {
+  if (!val) return { period_start: "", period_end: "" };
+  const parts = val.split(" - ");
+  return {
+    period_start: parts[0] ?? "",
+    period_end: parts[1] ?? parts[0] ?? "",
+  };
+};
+
+// ─── Draft Save Status indicator ─────────────────────────────
+// status: "idle" | "saving" | "saved" | "error"
+function DraftStatus({ status }) {
+  if (status === "idle") return null;
+
+  const config = {
+    saving: {
+      icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />,
+      text: "Saving draft...",
+      className: "text-muted-foreground",
+    },
+    saved: {
+      icon: <Save className="w-3.5 h-3.5" />,
+      text: "Draft saved",
+      className: "text-emerald-600 dark:text-emerald-400",
+    },
+    error: {
+      icon: <AlertCircle className="w-3.5 h-3.5" />,
+      text: "Failed to save draft",
+      className: "text-destructive",
+    },
+  };
+
+  const c = config[status];
+  if (!c) return null;
+
+  return (
+    <span
+      className={`flex items-center gap-1.5 text-xs font-medium ${c.className}`}
+    >
+      {c.icon}
+      {c.text}
+    </span>
+  );
+}
 
 // ─── Sub-components ──────────────────────────────────────────
 function SectionCard({ icon: IconComponent, title, children }) {
@@ -305,11 +360,11 @@ function SharedPeriodForm({ shared, setShared }) {
   );
 }
 
-// ─── Per-student Form (scores + content only) ────────────────
-function StudentReportForm({ enrollment, form, setForm, error }) {
+// ─── Per-student Form ─────────────────────────────────────────
+function StudentReportForm({ enrollment, form, setForm, error, draftStatus }) {
   const wordCount = useMemo(() => countWords(form.content), [form.content]);
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
-
+  const wordCountOver = wordCount > MAX_WORD_COUNT;
   const setScore = (key) => (val) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
@@ -372,28 +427,31 @@ function StudentReportForm({ enrollment, form, setForm, error }) {
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
           />
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Minimum {MIN_WORD_COUNT} words
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground">
+                {MIN_WORD_COUNT}–{MAX_WORD_COUNT} words
+              </span>
+              <DraftStatus status={draftStatus} />
+            </div>
             <span
               className={
-                wordCountOk
-                  ? "text-emerald-600 dark:text-emerald-400 font-medium"
-                  : wordCount > 0
-                    ? "text-amber-600 dark:text-amber-400"
-                    : "text-muted-foreground"
+                wordCountOver
+                  ? "text-destructive font-medium"
+                  : wordCountOk
+                    ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                    : wordCount > 0
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
               }
             >
-              {wordCount} / {MIN_WORD_COUNT} words
+              {wordCount} / {MAX_WORD_COUNT} words
             </span>
           </div>
           <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-300 ${
-                wordCountOk ? "bg-emerald-500" : "bg-amber-500"
-              }`}
+              className={`h-full rounded-full transition-all duration-300 ${wordCountOver ? "bg-destructive" : wordCountOk ? "bg-emerald-500" : "bg-amber-500"}`}
               style={{
-                width: `${Math.min((wordCount / MIN_WORD_COUNT) * 100, 100)}%`,
+                width: `${Math.min((wordCount / MAX_WORD_COUNT) * 100, 100)}%`,
               }}
             />
           </div>
@@ -411,13 +469,13 @@ function StudentReportForm({ enrollment, form, setForm, error }) {
 }
 
 // ─── Full Report Form (single mode) ──────────────────────────
-function ReportForm({ enrollment, form, setForm, error }) {
+function ReportForm({ enrollment, form, setForm, error, draftStatus }) {
   const wordCount = useMemo(() => countWords(form.content), [form.content]);
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
+  const wordCountOver = wordCount > MAX_WORD_COUNT;
 
   const set = (key) => (e) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
-
   const setScore = (key) => (val) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
@@ -593,28 +651,31 @@ function ReportForm({ enrollment, form, setForm, error }) {
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
           />
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Minimum {MIN_WORD_COUNT} words
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground">
+                {MIN_WORD_COUNT}–{MAX_WORD_COUNT} words
+              </span>
+              <DraftStatus status={draftStatus} />
+            </div>
             <span
               className={
-                wordCountOk
-                  ? "text-emerald-600 dark:text-emerald-400 font-medium"
-                  : wordCount > 0
-                    ? "text-amber-600 dark:text-amber-400"
-                    : "text-muted-foreground"
+                wordCountOver
+                  ? "text-destructive font-medium"
+                  : wordCountOk
+                    ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                    : wordCount > 0
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
               }
             >
-              {wordCount} / {MIN_WORD_COUNT} words
+              {wordCount} / {MAX_WORD_COUNT} words
             </span>
           </div>
           <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-300 ${
-                wordCountOk ? "bg-emerald-500" : "bg-amber-500"
-              }`}
+              className={`h-full rounded-full transition-all duration-300 ${wordCountOver ? "bg-destructive" : wordCountOk ? "bg-emerald-500" : "bg-amber-500"}`}
               style={{
-                width: `${Math.min((wordCount / MIN_WORD_COUNT) * 100, 100)}%`,
+                width: `${Math.min((wordCount / MAX_WORD_COUNT) * 100, 100)}%`,
               }}
             />
           </div>
@@ -631,9 +692,108 @@ function ReportForm({ enrollment, form, setForm, error }) {
   );
 }
 
+// ─── useAutosave hook ─────────────────────────────────────────
+// Handles auto-save draft logic for a single enrollment
+function useAutosave({
+  enrollmentId,
+  form,
+  sharedData,
+  reportIdRef,
+  isReadOnly,
+}) {
+  const [draftStatus, setDraftStatus] = useState("idle");
+  const debounceTimer = useRef(null);
+  const lastSavedRef = useRef(null);
+
+  const buildPayload = useCallback(() => {
+    const academicYear =
+      sharedData?.year_start && sharedData?.year_end
+        ? `${sharedData.year_start}/${sharedData.year_end}`
+        : undefined;
+    const period =
+      sharedData?.period_start && sharedData?.period_end
+        ? buildPeriodValue(sharedData.period_start, sharedData.period_end)
+        : undefined;
+
+    return {
+      enrollment_id: enrollmentId,
+      is_draft: true,
+      content: form.content ?? "",
+      academic_year: academicYear,
+      period,
+      score_creativity: form.score_creativity || null,
+      score_critical_thinking: form.score_critical_thinking || null,
+      score_attention: form.score_attention || null,
+      score_responsibility: form.score_responsibility || null,
+      score_coding_skills: form.score_coding_skills || null,
+    };
+  }, [enrollmentId, form, sharedData]);
+
+  const saveDraft = useCallback(async () => {
+    if (isReadOnly) return;
+
+    const payload = buildPayload();
+
+    // Skip if nothing changed
+    const payloadStr = JSON.stringify(payload);
+    if (payloadStr === lastSavedRef.current) return;
+
+    setDraftStatus("saving");
+    try {
+      if (!reportIdRef.current) {
+        // Create new draft
+        const res = await api.post("/teacher/reports", payload);
+        reportIdRef.current = res.data.data.id;
+      } else {
+        // Update existing draft
+        const { enrollment_id, ...updatePayload } = payload;
+        await api.patch(
+          `/teacher/reports/${reportIdRef.current}`,
+          updatePayload,
+        );
+      }
+      lastSavedRef.current = payloadStr;
+      setDraftStatus("saved");
+    } catch (err) {
+      console.error("Auto-save failed", err);
+      setDraftStatus("error");
+    }
+  }, [buildPayload, reportIdRef, isReadOnly]);
+
+  // Debounce auto-save whenever form or sharedData changes
+  useEffect(() => {
+    if (isReadOnly) return;
+
+    // Don't trigger on initial render before user types anything
+    const hasAnyData =
+      form.content ||
+      form.score_creativity ||
+      form.score_critical_thinking ||
+      form.score_attention ||
+      form.score_responsibility ||
+      form.score_coding_skills;
+
+    if (!hasAnyData && !reportIdRef.current) return;
+
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      // Only show "saving" when the request is actually about to be sent
+      setDraftStatus("saving");
+      saveDraft();
+    }, AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, [form, sharedData, saveDraft, isReadOnly, reportIdRef]);
+
+  return { draftStatus };
+}
+
 // ─── Single Mode ─────────────────────────────────────────────
 function SingleMode({ enrollment }) {
   const navigate = useNavigate();
+
   const [form, setForm] = useState({
     year_start: "",
     year_end: "",
@@ -646,14 +806,86 @@ function SingleMode({ enrollment }) {
     score_coding_skills: "",
     content: "",
   });
+
   const [loading, setLoading] = useState(false);
+  const [loadingDraft, setLoadingDraft] = useState(true);
   const [error, setError] = useState(null);
   const [uploaded, setUploaded] = useState(false);
   const [uploadedData, setUploadedData] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // reportIdRef: stores the report id once draft is created
+  const reportIdRef = useRef(null);
+  // isReadOnly: true after report uploaded to Drive
+  const [isReadOnly, setIsReadOnly] = useState(false);
+
+  // Load existing draft on mount
+  useEffect(() => {
+    let cancelled = false;
+    const loadDraft = async () => {
+      setLoadingDraft(true);
+      try {
+        const res = await api.get(
+          `/teacher/reports/draft/${enrollment.enrollment_id}`,
+        );
+        const draft = res.data.data;
+        if (!cancelled && draft) {
+          reportIdRef.current = draft.id;
+
+          // If already uploaded to Drive → read-only
+          if (draft.drive_file_id) {
+            setIsReadOnly(true);
+            setUploaded(true);
+            setUploadedData(draft);
+          }
+
+          // Parse academic_year and period back to form fields
+          const { year_start, year_end } = parseAcademicYear(
+            draft.academic_year,
+          );
+          const { period_start, period_end } = parsePeriod(draft.period);
+
+          setForm({
+            year_start,
+            year_end,
+            period_start,
+            period_end,
+            score_creativity: draft.score_creativity ?? "",
+            score_critical_thinking: draft.score_critical_thinking ?? "",
+            score_attention: draft.score_attention ?? "",
+            score_responsibility: draft.score_responsibility ?? "",
+            score_coding_skills: draft.score_coding_skills ?? "",
+            content: draft.content ?? "",
+          });
+        }
+      } catch {
+        // No draft found — start fresh
+      } finally {
+        if (!cancelled) setLoadingDraft(false);
+      }
+    };
+    loadDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [enrollment.enrollment_id]);
+
+  const { draftStatus } = useAutosave({
+    enrollmentId: enrollment.enrollment_id,
+    form,
+    sharedData: {
+      year_start: form.year_start,
+      year_end: form.year_end,
+      period_start: form.period_start,
+      period_end: form.period_end,
+    },
+    reportIdRef,
+    isReadOnly,
+  });
+
   const wordCount = useMemo(() => countWords(form.content), [form.content]);
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
+  const wordCountOver = wordCount > MAX_WORD_COUNT;
   const allScoresFilled = SKILLS.every((s) => form[s.key] !== "");
   const isFormValid =
     form.year_start &&
@@ -661,14 +893,15 @@ function SingleMode({ enrollment }) {
     form.period_start &&
     form.period_end &&
     allScoresFilled &&
-    wordCountOk;
+    wordCountOk &&
+    !wordCountOver;
 
   const doUpload = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post("/teacher/reports", {
-        enrollment_id: enrollment.enrollment_id,
+      const payload = {
+        is_draft: false,
         academic_year: `${form.year_start}/${form.year_end}`,
         period: buildPeriodValue(form.period_start, form.period_end),
         score_creativity: form.score_creativity,
@@ -677,10 +910,28 @@ function SingleMode({ enrollment }) {
         score_responsibility: form.score_responsibility,
         score_coding_skills: form.score_coding_skills,
         content: form.content.trim(),
-      });
-      const data = res.data.data;
+      };
+
+      let data;
+      if (reportIdRef.current) {
+        // Finalize existing draft
+        const res = await api.patch(
+          `/teacher/reports/${reportIdRef.current}`,
+          payload,
+        );
+        data = res.data.data;
+      } else {
+        // Create and finalize directly
+        const res = await api.post("/teacher/reports", {
+          enrollment_id: enrollment.enrollment_id,
+          ...payload,
+        });
+        data = res.data.data;
+      }
+
       setUploadedData(data);
       setUploaded(true);
+      setIsReadOnly(true);
       if (data?.id) printReport(data.id);
     } catch (err) {
       setError(
@@ -692,7 +943,16 @@ function SingleMode({ enrollment }) {
     }
   };
 
-  if (uploaded) {
+  if (loadingDraft) {
+    return (
+      <div className="max-w-2xl mx-auto py-20 flex flex-col items-center gap-3 text-center">
+        <Loader2 className="w-7 h-7 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading draft...</p>
+      </div>
+    );
+  }
+
+  if (uploaded && isReadOnly) {
     return (
       <div className="max-w-lg mx-auto py-20 flex flex-col items-center gap-4 text-center">
         <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
@@ -735,25 +995,47 @@ function SingleMode({ enrollment }) {
         title="Final Report"
         description={`${enrollment.student_name} · ${enrollment.module_name}`}
         actions={
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </Button>
+          <div className="flex items-center gap-3">
+            {/* Show draft saved indicator in header too */}
+            {draftStatus !== "idle" && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Clock className="w-3.5 h-3.5" />
+                {draftStatus === "saving" && "Saving..."}
+                {draftStatus === "saved" && "Draft saved"}
+                {draftStatus === "error" && "Save failed"}
+              </div>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+          </div>
         }
       />
+
+      {/* Draft banner — shown if existing draft was loaded */}
+      {reportIdRef.current && !isReadOnly && (
+        <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400">
+          <Save className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            A saved draft was loaded. Your progress is automatically saved as
+            you type.
+          </span>
+        </div>
+      )}
 
       <ReportForm
         enrollment={enrollment}
         form={form}
         setForm={setForm}
         error={error}
+        draftStatus={draftStatus}
       />
 
       <div className="flex justify-end gap-3 pb-6">
         <Button variant="outline" onClick={() => navigate(-1)}>
           Cancel
         </Button>
-        {/* FIX: show spinner + text while loading so user knows upload is in progress */}
         <Button
           onClick={() => setConfirmOpen(true)}
           disabled={!isFormValid || loading}
@@ -805,10 +1087,14 @@ function BatchMode({ enrollments }) {
   );
   const [currentIdx, setCurrentIdx] = useState(0);
   const [errors, setErrors] = useState(() => enrollments.map(() => null));
+  const [loadingDrafts, setLoadingDrafts] = useState(true);
 
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // reportIdRefs: one ref per enrollment
+  const reportIdRefs = useRef(enrollments.map(() => null));
 
   const currentEnrollment = enrollments[currentIdx];
   const currentForm = forms[currentIdx];
@@ -828,11 +1114,88 @@ function BatchMode({ enrollments }) {
     setErrors((prev) => prev.map((e, i) => (i === idx ? message : e)));
   };
 
+  // Load existing drafts for all enrollments on mount
+  useEffect(() => {
+    let cancelled = false;
+    const loadAllDrafts = async () => {
+      setLoadingDrafts(true);
+      const newForms = [...forms];
+      let sharedLoaded = false;
+
+      for (let i = 0; i < enrollments.length; i++) {
+        try {
+          const res = await api.get(
+            `/teacher/reports/draft/${enrollments[i].enrollment_id}`,
+          );
+          const draft = res.data.data;
+          if (!cancelled && draft) {
+            reportIdRefs.current[i] = draft.id;
+            const { year_start, year_end } = parseAcademicYear(
+              draft.academic_year,
+            );
+            const { period_start, period_end } = parsePeriod(draft.period);
+
+            newForms[i] = {
+              score_creativity: draft.score_creativity ?? "",
+              score_critical_thinking: draft.score_critical_thinking ?? "",
+              score_attention: draft.score_attention ?? "",
+              score_responsibility: draft.score_responsibility ?? "",
+              score_coding_skills: draft.score_coding_skills ?? "",
+              content: draft.content ?? "",
+            };
+
+            // Load shared period from first draft that has it
+            if (!sharedLoaded && year_start && period_start) {
+              setShared({ year_start, year_end, period_start, period_end });
+              sharedLoaded = true;
+            }
+          }
+        } catch {
+          // No draft for this enrollment — start fresh
+        }
+      }
+
+      if (!cancelled) {
+        setForms(newForms);
+        setLoadingDrafts(false);
+      }
+    };
+    loadAllDrafts();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save for current student
+  const currentReportIdRef = useRef(null);
+
+  // Sync currentReportIdRef to reportIdRefs per index
+  useEffect(() => {
+    currentReportIdRef.current = reportIdRefs.current[currentIdx];
+  }, [currentIdx]);
+
+  const { draftStatus } = useAutosave({
+    enrollmentId: currentEnrollment?.enrollment_id,
+    form: currentForm,
+    sharedData: shared,
+    reportIdRef: {
+      get current() {
+        return reportIdRefs.current[currentIdx];
+      },
+      set current(val) {
+        reportIdRefs.current[currentIdx] = val;
+      },
+    },
+    isReadOnly: false,
+  });
+
   const wordCount = useMemo(
     () => countWords(currentForm.content),
     [currentForm.content],
   );
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
+  const wordCountOver = wordCount > MAX_WORD_COUNT;
   const allScoresFilled = SKILLS.every((s) => currentForm[s.key] !== "");
   const currentFormValid = allScoresFilled && wordCountOk;
 
@@ -847,8 +1210,6 @@ function BatchMode({ enrollments }) {
     countWords(f.content) >= MIN_WORD_COUNT;
 
   const allFormsValid = sharedValid && forms.every(isFormReady);
-
-  // FIX: block Next if shared period not yet filled
   const canGoNext = sharedValid && currentFormValid;
 
   const doUploadAll = async () => {
@@ -862,19 +1223,35 @@ function BatchMode({ enrollments }) {
     for (let i = 0; i < enrollments.length; i++) {
       const enrollment = enrollments[i];
       const form = forms[i];
+      const existingReportId = reportIdRefs.current[i];
+
+      const payload = {
+        is_draft: false,
+        academic_year: academicYear,
+        period,
+        score_creativity: form.score_creativity,
+        score_critical_thinking: form.score_critical_thinking,
+        score_attention: form.score_attention,
+        score_responsibility: form.score_responsibility,
+        score_coding_skills: form.score_coding_skills,
+        content: form.content.trim(),
+      };
+
       try {
-        const res = await api.post("/teacher/reports", {
-          enrollment_id: enrollment.enrollment_id,
-          academic_year: academicYear,
-          period,
-          score_creativity: form.score_creativity,
-          score_critical_thinking: form.score_critical_thinking,
-          score_attention: form.score_attention,
-          score_responsibility: form.score_responsibility,
-          score_coding_skills: form.score_coding_skills,
-          content: form.content.trim(),
-        });
-        const data = res.data.data;
+        let data;
+        if (existingReportId) {
+          const res = await api.patch(
+            `/teacher/reports/${existingReportId}`,
+            payload,
+          );
+          data = res.data.data;
+        } else {
+          const res = await api.post("/teacher/reports", {
+            enrollment_id: enrollment.enrollment_id,
+            ...payload,
+          });
+          data = res.data.data;
+        }
         results.push({ enrollment, success: true, data });
         if (data?.id) successfulReportIds.push(data.id);
         setErrorAt(i, null);
@@ -892,6 +1269,15 @@ function BatchMode({ enrollments }) {
       printReportsBatch(successfulReportIds);
     }
   };
+
+  if (loadingDrafts) {
+    return (
+      <div className="max-w-2xl mx-auto py-20 flex flex-col items-center gap-3 text-center">
+        <Loader2 className="w-7 h-7 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading saved drafts...</p>
+      </div>
+    );
+  }
 
   if (uploadResults) {
     return (
@@ -953,16 +1339,36 @@ function BatchMode({ enrollments }) {
         title="Final Reports"
         description="Fill in shared settings once, then scores & notes per student."
         actions={
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </Button>
+          <div className="flex items-center gap-3">
+            {draftStatus !== "idle" && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Clock className="w-3.5 h-3.5" />
+                {draftStatus === "saving" && "Saving..."}
+                {draftStatus === "saved" && "Draft saved"}
+                {draftStatus === "error" && "Save failed"}
+              </div>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+          </div>
         }
       />
 
+      {/* Draft banner */}
+      {reportIdRefs.current.some((id) => id !== null) && (
+        <div className="flex items-center gap-2.5 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400">
+          <Save className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            Saved drafts were loaded for some students. Your progress is
+            automatically saved as you type.
+          </span>
+        </div>
+      )}
+
       <SharedPeriodForm shared={shared} setShared={setShared} />
 
-      {/* Validation hint when shared period is incomplete */}
       {!sharedValid && (
         <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-600 dark:text-amber-400 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -989,6 +1395,7 @@ function BatchMode({ enrollments }) {
           {enrollments.map((e, i) => {
             const ready = isFormReady(forms[i]);
             const hasError = !!errors[i];
+            const hasDraft = !!reportIdRefs.current[i];
             return (
               <button
                 key={i}
@@ -1002,11 +1409,27 @@ function BatchMode({ enrollments }) {
                       ? "w-2 bg-destructive"
                       : ready
                         ? "w-2 bg-emerald-500"
-                        : "w-2 bg-muted-foreground/30"
+                        : hasDraft
+                          ? "w-2 bg-blue-400"
+                          : "w-2 bg-muted-foreground/30"
                 }`}
               />
             );
           })}
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />{" "}
+            Ready
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />{" "}
+            Draft saved
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-muted-foreground/30 inline-block" />{" "}
+            Not started
+          </span>
         </div>
       </div>
 
@@ -1015,6 +1438,7 @@ function BatchMode({ enrollments }) {
         form={currentForm}
         setForm={setCurrentForm}
         error={errors[currentIdx]}
+        draftStatus={draftStatus}
       />
 
       <div className="flex items-center justify-between gap-3 pb-6">
@@ -1029,7 +1453,6 @@ function BatchMode({ enrollments }) {
 
         <div className="flex gap-2">
           {currentIdx < enrollments.length - 1 ? (
-            // FIX: also require sharedValid before allowing Next
             <Button
               onClick={() => setCurrentIdx((i) => i + 1)}
               disabled={!canGoNext}
@@ -1086,7 +1509,6 @@ function BatchMode({ enrollments }) {
 // ─── Main Page ───────────────────────────────────────────────
 export default function FinalReportPage() {
   const location = useLocation();
-
   const enrollment = location.state?.enrollment;
   const enrollments = location.state?.enrollments;
 
