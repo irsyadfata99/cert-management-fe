@@ -37,9 +37,13 @@ const driveService = {
   getTeacherStock: () => api.get("/teacher/stock").then((r) => r.data),
 
   // ── Certificates ──
-  uploadScan: (certId, file) => {
+  // isReprint: if true, appends _REPRINT to the filename before extension
+  uploadScan: (certId, file, isReprint = false) => {
     const formData = new FormData();
     formData.append("file", file);
+    if (isReprint) {
+      formData.append("is_reprint", "true");
+    }
     return api
       .post(`/drive/certificates/${certId}/scan`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
