@@ -691,25 +691,26 @@ function ReportForm({ enrollment, form, setForm, error, draftStatus }) {
 
 // ─── useAutosave hook ─────────────────────────────────────────
 //
-// [FIX-1] reportIdRef dihapus dari dependency array useEffect.
+// [FIX Bug 6] Autosave batch mode — cegah autosave saat sedang switch student.
 //
-// Sebelumnya dependency array: [form, sharedData, saveDraft, isReadOnly, reportIdRef]
-// Masalah: ref adalah objek stabil yang tidak berubah referensinya —
-// menambahkannya ke dependency array tidak berguna karena React tidak
-// bisa mendeteksi perubahan ref.current. Ini juga menyebabkan lint
-// warning "unnecessary dependency" yang menyembunyikan intent sebenarnya.
+// Masalah sebelumnya:
+//   Saat user switch student (setCurrentIdx), currentIdx berubah tapi
+//   debounce timer yang sudah berjalan belum di-cancel. Timer bisa fire
+//   dengan enrollmentId dari student BARU tapi reportIdRef masih menunjuk
+//   ke report student LAMA, menyebabkan POST/PATCH ke enrollment yang salah.
 //
-// Perubahan ref.current (saat draft pertama kali dibuat) tidak akan
-// trigger effect re-run — ini sebenarnya BENAR karena autosave sudah
-// berjalan berdasarkan perubahan form/sharedData, bukan perubahan reportId.
-// reportIdRef.current dibaca saat saveDraft dieksekusi (closure yang fresh),
-// bukan saat effect setup — jadi tidak perlu di-depend.
+// Solusi:
+//   Tambah `isSwitchingRef` yang di-set TRUE saat switch student dan di-reset
+//   FALSE setelah 1 tick (useEffect cleanup). Autosave tidak akan fire jika
+//   `isSwitchingRef.current === true`. Ini memastikan tidak ada race condition
+//   antara switch student dan autosave debounce.
 function useAutosave({
   enrollmentId,
   form,
   sharedData,
   reportIdRef,
   isReadOnly,
+  isSwitching,
 }) {
   const [draftStatus, setDraftStatus] = useState("idle");
   const debounceTimer = useRef(null);
@@ -741,6 +742,8 @@ function useAutosave({
 
   const saveDraft = useCallback(async () => {
     if (isReadOnly) return;
+    // [FIX Bug 6] Jangan save jika sedang switch student
+    if (isSwitching) return;
 
     const payload = buildPayload();
     const payloadStr = JSON.stringify(payload);
@@ -752,7 +755,6 @@ function useAutosave({
         const res = await api.post("/teacher/reports", payload);
         reportIdRef.current = res.data.data.id;
       } else {
-        // enrollment_id tidak dikirim saat PATCH — hanya saat POST baru
         const { enrollment_id: _enrollment_id, ...updatePayload } = payload;
         await api.patch(
           `/teacher/reports/${reportIdRef.current}`,
@@ -765,10 +767,18 @@ function useAutosave({
       console.error("Auto-save failed", err);
       setDraftStatus("error");
     }
-  }, [buildPayload, reportIdRef, isReadOnly]);
+  }, [buildPayload, reportIdRef, isReadOnly, isSwitching]);
 
   useEffect(() => {
     if (isReadOnly) return;
+    // [FIX Bug 6] Cancel debounce dan jangan schedule baru saat switching
+    if (isSwitching) {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      return;
+    }
 
     const hasAnyData =
       form.content ||
@@ -789,13 +799,14 @@ function useAutosave({
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-    // [FIX-1] reportIdRef sengaja tidak dimasukkan ke dependency array.
-    // Penjelasan: reportIdRef adalah ref (objek stabil) — React tidak bisa
-    // mendeteksi perubahan .current, sehingga menambahkannya ke deps tidak
-    // mengubah kapan effect berjalan. saveDraft membaca reportIdRef.current
-    // saat dieksekusi (closure fresh), bukan saat effect setup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, sharedData, saveDraft, isReadOnly]);
+  }, [form, sharedData, saveDraft, isReadOnly, isSwitching]);
+
+  // Reset lastSaved saat enrollmentId berubah agar tidak skip save untuk student baru
+  useEffect(() => {
+    lastSavedRef.current = null;
+    setDraftStatus("idle");
+  }, [enrollmentId]);
 
   return { draftStatus };
 }
@@ -886,6 +897,7 @@ function SingleMode({ enrollment }) {
     },
     reportIdRef,
     isReadOnly,
+    isSwitching: false,
   });
 
   const wordCount = useMemo(() => countWords(form.content), [form.content]);
@@ -1094,12 +1106,9 @@ function BatchMode({ enrollments }) {
   const [uploadResults, setUploadResults] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // [FIX-2] currentReportIdRef dihapus.
-  // Sebelumnya: currentReportIdRef di-declare dan di-sync ke
-  // reportIdRefs.current[currentIdx] via useEffect, tapi tidak pernah
-  // digunakan di mana pun. useAutosave sudah menggunakan getter/setter
-  // pattern yang langsung mengakses reportIdRefs.current[currentIdx].
-  // Dead code yang membingungkan — dihapus.
+  // [FIX Bug 6] isSwitching state — mencegah autosave fire saat switch student
+  const [isSwitching, setIsSwitching] = useState(false);
+
   const reportIdRefs = useRef(enrollments.map(() => null));
 
   const currentEnrollment = enrollments[currentIdx];
@@ -1119,6 +1128,18 @@ function BatchMode({ enrollments }) {
   const setErrorAt = (idx, message) => {
     setErrors((prev) => prev.map((e, i) => (i === idx ? message : e)));
   };
+
+  // [FIX Bug 6] Handler switch student yang aman
+  const handleSwitchStudent = useCallback((newIdx) => {
+    // Set isSwitching = true dulu untuk cancel debounce yang sedang berjalan
+    setIsSwitching(true);
+    setCurrentIdx(newIdx);
+    // Reset isSwitching setelah 1 frame agar useAutosave tidak fire
+    // untuk state lama setelah switch
+    requestAnimationFrame(() => {
+      setIsSwitching(false);
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1168,13 +1189,6 @@ function BatchMode({ enrollments }) {
     return () => {
       cancelled = true;
     };
-    // [FIX-3] forms sengaja tidak dimasukkan ke dependency array.
-    // forms adalah initial state yang di-mutate di dalam loadAllDrafts
-    // (newForms = [...forms]). Jika forms dimasukkan ke deps, effect akan
-    // loop karena setForms di dalam effect akan trigger re-run effect.
-    // Ini adalah intentional stale closure — forms hanya dibaca sekali
-    // saat mount untuk mendapatkan initial structure, kemudian di-replace
-    // seluruhnya dengan data dari server.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1182,8 +1196,6 @@ function BatchMode({ enrollments }) {
     enrollmentId: currentEnrollment?.enrollment_id,
     form: currentForm,
     sharedData: shared,
-    // [FIX-2] Gunakan getter/setter object langsung mengakses index saat ini.
-    // currentReportIdRef yang sebelumnya ada adalah dead code — dihapus.
     reportIdRef: {
       get current() {
         return reportIdRefs.current[currentIdx];
@@ -1193,6 +1205,7 @@ function BatchMode({ enrollments }) {
       },
     },
     isReadOnly: false,
+    isSwitching,
   });
 
   const wordCount = useMemo(
@@ -1200,8 +1213,6 @@ function BatchMode({ enrollments }) {
     [currentForm.content],
   );
   const wordCountOk = wordCount >= MIN_WORD_COUNT;
-  // wordCountOver tidak dipakai di BatchMode — StudentReportForm sudah
-  // menampilkan warning visual. currentFormValid hanya cek minimum.
   const allScoresFilled = SKILLS.every((s) => currentForm[s.key] !== "");
   const currentFormValid = allScoresFilled && wordCountOk;
 
@@ -1405,7 +1416,7 @@ function BatchMode({ enrollments }) {
               <button
                 key={i}
                 type="button"
-                onClick={() => setCurrentIdx(i)}
+                onClick={() => handleSwitchStudent(i)}
                 title={e.student_name}
                 className={`h-2 rounded-full transition-all duration-150 ${
                   i === currentIdx
@@ -1449,7 +1460,7 @@ function BatchMode({ enrollments }) {
       <div className="flex items-center justify-between gap-3 pb-6">
         <Button
           variant="outline"
-          onClick={() => setCurrentIdx((i) => i - 1)}
+          onClick={() => handleSwitchStudent(currentIdx - 1)}
           disabled={currentIdx === 0}
         >
           <ChevronLeft className="w-4 h-4 mr-1" />
@@ -1459,7 +1470,7 @@ function BatchMode({ enrollments }) {
         <div className="flex gap-2">
           {currentIdx < enrollments.length - 1 ? (
             <Button
-              onClick={() => setCurrentIdx((i) => i + 1)}
+              onClick={() => handleSwitchStudent(currentIdx + 1)}
               disabled={!canGoNext}
             >
               Next
