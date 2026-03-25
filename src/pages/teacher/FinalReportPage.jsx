@@ -213,25 +213,41 @@ function SectionCard({ icon: IconComponent, title, children }) {
 }
 
 function ScoreSelect({ value, onChange }) {
+  const SCORE_CONFIG = {
+    "A+": { color: "emerald" },
+    A: { color: "blue" },
+    "B+": { color: "amber" },
+    B: { color: "orange" },
+  };
+
   return (
     <div className="flex gap-1.5">
-      {SCORE_VALUES.map((s) => (
-        <button
-          key={s}
-          type="button"
-          onClick={() => onChange(value === s ? "" : s)}
-          className={`
-            w-10 h-8 rounded-md text-xs font-semibold border transition-all duration-150
-            ${
-              value === s
-                ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                : "bg-background text-muted-foreground border-input hover:border-primary/50 hover:text-foreground"
-            }
-          `}
-        >
-          {s}
-        </button>
-      ))}
+      {Object.entries(SCORE_CONFIG).map(([score, { color }]) => {
+        const isSelected = value === score;
+        return (
+          <button
+            key={score}
+            type="button"
+            onClick={() => onChange(isSelected ? "" : score)}
+            className={`
+              w-10 h-8 rounded-md text-xs font-bold border-2 transition-all duration-150
+              ${
+                isSelected
+                  ? color === "emerald"
+                    ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30 scale-105"
+                    : color === "blue"
+                      ? "bg-blue-500 border-blue-500 text-white shadow-md shadow-blue-500/30 scale-105"
+                      : color === "amber"
+                        ? "bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/30 scale-105"
+                        : "bg-orange-500 border-orange-500 text-white shadow-md shadow-orange-500/30 scale-105"
+                  : "bg-background text-muted-foreground border-input hover:border-primary/50 hover:text-foreground"
+              }
+            `}
+          >
+            {score}
+          </button>
+        );
+      })}
     </div>
   );
 }

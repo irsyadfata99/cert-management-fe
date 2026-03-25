@@ -34,123 +34,183 @@ const formatCertId = (num) => {
   return `CERT-${String(num).padStart(6, "0")}`;
 };
 
-// ── Summary Card ─────────────────────────────────────────────
-function SummaryCard({ title, value, icon: Icon, loading, sub, warning }) {
+// ── Combined Stats Card ───────────────────────────────────────
+function StatsCard({ total, loading }) {
+  const stats = [
+    {
+      label: "Active Enrollments",
+      value: total.enrollments,
+      icon: BookOpen,
+      color: "text-blue-500",
+      bg: "bg-blue-500/10",
+    },
+    {
+      label: "Certificates Printed",
+      value: total.certs,
+      icon: Award,
+      color: "text-emerald-500",
+      bg: "bg-emerald-500/10",
+    },
+    {
+      label: "Reports Created",
+      value: total.reports,
+      icon: FileText,
+      color: "text-purple-500",
+      bg: "bg-purple-500/10",
+    },
+  ];
+
   return (
     <Card>
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1 min-w-0">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">
-              {title}
-            </p>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold">Overview</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-muted/30 border border-border"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`p-1.5 rounded-md ${stat.bg} shrink-0`}>
+                <stat.icon className={`w-3.5 h-3.5 ${stat.color}`} />
+              </div>
+              <span className="text-sm text-muted-foreground">
+                {stat.label}
+              </span>
+            </div>
             {loading ? (
-              <div className="h-7 w-16 bg-muted animate-pulse rounded" />
+              <div className="h-5 w-8 bg-muted animate-pulse rounded" />
             ) : (
-              <p className="text-2xl font-bold tabular-nums">{value ?? "—"}</p>
-            )}
-            {sub && !loading && (
-              <p className="text-xs text-muted-foreground">{sub}</p>
-            )}
-            {warning && !loading && (
-              <p className="text-xs text-amber-500 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> {warning}
-              </p>
+              <span className="text-sm font-bold tabular-nums text-foreground">
+                {stat.value ?? "—"}
+              </span>
             )}
           </div>
-          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-            <Icon className="w-4 h-4 text-primary" />
-          </div>
-        </div>
+        ))}
       </CardContent>
     </Card>
   );
 }
 
-// ── Stock Card ───────────────────────────────────────────────
+// ── Stock Card with Tabs ──────────────────────────────────────
 function StockCard({ stock, loading }) {
   const stocks = stock ? (Array.isArray(stock) ? stock : [stock]) : [];
+  const [activeTab, setActiveTab] = useState(0);
+
+  useEffect(() => {
+    setActiveTab(0);
+  }, [stocks.length]);
+
+  const activeStock = stocks[activeTab] ?? null;
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold">Stock Info</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {loading ? (
-          <LoadingSkeleton rows={2} />
+          <LoadingSkeleton rows={3} />
         ) : stocks.length === 0 ? (
           <p className="text-sm text-muted-foreground">No stock data</p>
         ) : (
-          stocks.map((s) => {
-            const hasBatch = s.cert_range_start != null;
-            const certAvailable = s.cert_quantity ?? 0;
-
-            return (
-              <div key={s.center_id} className="space-y-2">
-                {stocks.length > 1 && (
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {s.center_name}
-                  </p>
-                )}
-
-                {/* Certificate Stock */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Certificate</span>
-                    <span
-                      className={`font-semibold tabular-nums ${s.cert_low_stock ? "text-amber-500" : ""}`}
-                    >
-                      {certAvailable}
-                      {s.cert_low_stock && (
-                        <AlertTriangle className="inline w-3 h-3 ml-1" />
-                      )}
-                    </span>
-                  </div>
-
-                  {hasBatch ? (
-                    <div className="rounded-md bg-muted/30 px-2.5 py-2 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Range</span>
-                        <span className="font-mono text-foreground">
-                          {formatCertId(s.cert_range_start)} —{" "}
-                          {formatCertId(s.cert_range_end)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">
-                          Next assign
-                        </span>
-                        <span className="font-mono font-medium text-primary">
-                          {formatCertId(s.cert_current_position)}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-amber-500">
-                      Belum ada batch. Hubungi admin.
-                    </p>
-                  )}
-                </div>
-
-                {/* Medal Stock */}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Medal</span>
-                  <span
-                    className={`font-semibold tabular-nums ${s.medal_low_stock ? "text-amber-500" : ""}`}
+          <>
+            {/* Tabs — only show if more than 1 center */}
+            {stocks.length > 1 && (
+              <div className="flex gap-1 p-1 rounded-lg bg-muted/50 border border-border">
+                {stocks.map((s, i) => (
+                  <button
+                    key={s.center_id}
+                    onClick={() => setActiveTab(i)}
+                    className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all duration-150 truncate ${
+                      activeTab === i
+                        ? "bg-background text-foreground shadow-sm border border-border"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    title={s.center_name}
                   >
-                    {s.medal_quantity}
-                    {s.medal_low_stock && (
-                      <AlertTriangle className="inline w-3 h-3 ml-1" />
-                    )}
-                  </span>
-                </div>
+                    {s.center_name}
+                  </button>
+                ))}
               </div>
-            );
-          })
+            )}
+
+            {/* Single center label if only 1 */}
+            {stocks.length === 1 && (
+              <p className="text-xs font-medium text-muted-foreground">
+                {stocks[0].center_name}
+              </p>
+            )}
+
+            {activeStock && <StockDetail stock={activeStock} />}
+          </>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function StockDetail({ stock: s }) {
+  const hasBatch = s.cert_range_start != null;
+  const certAvailable = s.cert_quantity ?? 0;
+
+  return (
+    <div className="space-y-3">
+      {/* Certificate */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-muted-foreground">
+            Certificate
+          </span>
+          <span
+            className={`text-sm font-bold tabular-nums flex items-center gap-1 ${
+              s.cert_low_stock ? "text-amber-500" : "text-foreground"
+            }`}
+          >
+            {certAvailable}
+            {s.cert_low_stock && <AlertTriangle className="w-3 h-3" />}
+          </span>
+        </div>
+
+        {hasBatch ? (
+          <div className="rounded-md bg-muted/30 px-3 py-2.5 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Range</span>
+              <span className="font-mono text-foreground">
+                {formatCertId(s.cert_range_start)} —{" "}
+                {formatCertId(s.cert_range_end)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Next assign</span>
+              <span className="font-mono font-medium text-primary">
+                {formatCertId(s.cert_current_position)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-500 px-1">
+            Belum ada batch. Hubungi admin.
+          </p>
+        )}
+      </div>
+
+      <div className="border-t border-border" />
+
+      {/* Medal */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-muted-foreground">Medal</span>
+        <span
+          className={`text-sm font-bold tabular-nums flex items-center gap-1 ${
+            s.medal_low_stock ? "text-amber-500" : "text-foreground"
+          }`}
+        >
+          {s.medal_quantity}
+          {s.medal_low_stock && <AlertTriangle className="w-3 h-3" />}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -361,6 +421,7 @@ export default function TeacherDashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Dashboard</h1>
@@ -381,28 +442,13 @@ export default function TeacherDashboardPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard
-          title="Active Enrollments"
-          value={total.enrollments}
-          icon={BookOpen}
-          loading={loading}
-        />
-        <SummaryCard
-          title="Certificates Printed"
-          value={total.certs}
-          icon={Award}
-          loading={loading}
-        />
-        <SummaryCard
-          title="Reports Created"
-          value={total.reports}
-          icon={FileText}
-          loading={loading}
-        />
+      {/* Top row: Stats + Stock side by side */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <StatsCard total={total} loading={loading} />
         <StockCard stock={stock} loading={loading} />
       </div>
 
+      {/* Bottom row: Chart + Recent Certs */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
